@@ -14,6 +14,7 @@ déposer dans appareil/brut/ et le comparer à la capture :
 La comparaison ne montre que la place de chaque morceau (quel champ du 38 il reprend), jamais NIM, IFU ni signature.
 """
 import argparse
+import os
 import re
 import sys
 
@@ -67,8 +68,15 @@ def main(argv=None):
     a.add_argument("--numero", required=True, help="numéro de la facture dans son type")
     a.add_argument("--type", default="FV")
     o = a.parse_args(argv)
+    if not os.path.isfile(o.comparer):
+        print("%s absent : scanner d'abord le QR d'un ticket imprimé par l'appareil, puis coller son texte dans ce "
+              "fichier (par exemple : cat > %s, coller, Entrée, Ctrl-D)." % (o.comparer, o.comparer))
+        return 2
     with open(o.comparer, encoding="utf-8", errors="replace") as f:
         scanne = f.read().strip()
+    if not scanne:
+        print("%s est vide : rien à comparer." % o.comparer)
+        return 2
     with open(o.capture, encoding="utf-8", errors="replace") as f:
         r = reponse_38(f.read().splitlines(), o.numero, o.type)
     if r is None:
