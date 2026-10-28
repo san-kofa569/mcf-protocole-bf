@@ -11,7 +11,7 @@ Un logiciel de facturation d'entreprise (SFE) burkinabè doit faire certifier ch
 Le protocole officiel n'est pas public. Ce dépôt l'établit par essais sur un **Datamega FIS-NANO** relié à
 l'environnement de test de la DGI : chaque fait dit d'où il vient (appareil, code tiers public, texte officiel).
 
-> **État au 2026-10-28 : cycle complet prouvé**, jusqu'à une facture certifiée transmise au serveur de test de la DGI.
+> **État au 2026-10-28 : cycle complet prouvé** — vente, annulation et avoir certifiés sur l'environnement de test de la DGI.
 > Référence complète : [`docs/REFERENCE_PROTOCOLE.md`](docs/REFERENCE_PROTOCOLE.md).
 
 **Sommaire** — [Le cycle](#le-cycle) · [Démarrage rapide](#démarrage-rapide) · [Ce qui reste ouvert](#ce-qui-reste-ouvert) ·
@@ -46,8 +46,10 @@ sequenceDiagram
 | **C0** ouverture | `1,Essai,{IFU},FV,TTC,ISF-ESSAI,ESSAI-0008,A` — le **PSVB** (8e champ) est obligatoire | `1,3,` + client |
 | **31** article | `ARTICLE TEST⇥LOCBIE,B18.0%100.00⇥100.00*1` — type, groupe et taux, montant ; prix × quantité | `100.0,84.75,15.25,0.0` |
 | **33** sous-total | aucune | 35 champs : total `102.0`, 16 montants, 16 TVA, PSVB `2.0`, … |
-| **35** paiement | `E102.00` — mode (E espèces) et montant | `R0` |
+| **35** paiement | `E102.00` — mode (`E` espèces, `M` mobile money) et montant | `R0` ; reste dû en négatif : `R-114.2` |
 | **38** normalisation | `102.00` — le total du 33, **seul** | 8 champs : compteurs, `FV`, date, NIM, IFU, signature (24 car.), référence |
+| **38** annulation | `C`, après le 35 | `E:ANNULEE` — la facture n'est pas comptée |
+| **C0** avoir | `1,Essai,{IFU},FA,COR,{NIM}-1-4,TTC,ISF-ESSAI,AVOIR-0001,A` — référence = identifiant de l'appareil et compteur total de la facture d'origine | `1,5,` + client, puis le cycle d'une vente |
 
 Trame de la famille Datecs : `01 LEN SEQ CMD DONNÉES 05 BCC 03`, réponse `… 04 STATUT 05 BCC 03`, 115200 8N1.
 Le protocole est celui de la famille du « PROTOCOLE MCF-SFE v1.0 » de la DGI de la RDC ; le Burkina y ajoute le PSVB
@@ -62,6 +64,7 @@ python3 -m pip install pyserial==3.5 pytest
 python3 -m pytest -q                                              # tests
 python3 -m appareil.recherche_article --liste --grille quantite   # affiche une grille, n'envoie rien
 python3 -m appareil.recherche_article --jumeau --grille quantite  # la joue contre le jumeau
+python3 -m appareil.cycle --scenario deux --fn ESSAI-0001 --jumeau  # une facture entière contre le jumeau
 ```
 
 Avec l'appareil (USB CDC, `/dev/ttyACM0`, application fiscale au premier plan) :
@@ -76,11 +79,17 @@ python3 appareil/trame.py /dev/ttyACM0 27 C0 "$(cat appareil/essais/sondes/c0_fa
 
 ## Ce qui reste ouvert
 
-- **Annulation** d'une facture ouverte : C1, C2 ou un rallumage l'annulent ; `38 C` (forme de la RDC) n'est pas tranché.
-- **Avoirs** (`FA`, `EA`) : nature (`COR`, `RAN`, `RAM`, `RRR`) et référence d'origine dans le C0, non essayés.
-- **Paiements** autres qu'en espèces (`V`, `C`, `M`, `D`, `A` dans les protocoles voisins) ; paiement en plusieurs fois.
-- **Mode HT**, remises (prix d'origine et motif), taxe spécifique (`;T…`), catégories PSVB B à D, plusieurs articles.
-- **Code QR** burkinabè : contenu et ordre des champs inconnus.
+Prouvés depuis la première facture : plusieurs lignes et groupes, PSVB sur toutes les lignes, mobile money et paiement
+en deux fois, annulation (`38 C`), avoir de correction. Restent :
+
+- **Code QR** burkinabè : « au format défini par l'Administration », non publié.
+- **Mode HT**, remises (prix d'origine et motif), taxe spécifique (`;T…`), catégories PSVB B à D.
+- Autres modes de paiement (`V`, `C`, `D`, `A` dans les protocoles voisins), autres natures d'avoir (`RAN`, `RAM`, `RRR`),
+  factures d'acompte et d'exportation (`FT`, `EV`, `ET`, `EA`).
+
+> ⚠ L'appareil **ne contrôle pas les paiements** : il accepte un montant négatif et certifie une facture non soldée.
+> Le logiciel de facturation doit refuser lui-même tout paiement nul ou négatif, et ne lancer le 38 qu'après un `R0`
+> (c'est ce que fait [`appareil/cycle.py`](appareil/cycle.py), client de référence du cycle).
 
 ## Structure
 
