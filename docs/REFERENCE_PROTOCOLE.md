@@ -143,6 +143,11 @@ soumise en premier.` Vide, sans article : `E:Aucune donnée valide n'a été re�
 
 Réponse à 8 champs : compteur de factures de vente, compteur total, type (`FV`), date `AAAAMMJJhhmmss`, `{NIM}`, `{IFU}`,
 **signature (24 caractères)**, FN. Valeurs réelles dans `appareil/brut/2026-10-28_seance.txt` (hors dépôt).
+
+Mentions à imprimer (📜 note 0887 §2.10.3–2.10.4), tirées de cette réponse : **code SECeF** = la signature ;
+**identificateur de machine** `(NIM)-(ACNT)` = le 5e champ tel quel (`{NIM}-1` : ACNT = compteur d'activation) ;
+**compteurs** `(CPIT)/(FDOC) (ITL)` = champs 1, 2 et 3 (`1/3 FV` : 1re facture de vente, 3 transactions) ;
+**date et heure du MCF** = le 4e champ ; **code QR** « au format défini par l'Administration » : ❓ non publié.
 📖 RDC : réponse `P:` = renvoyer la même commande (jamais vue).
 ✅ Transmission : un C2 lancé 20 minutes après répond `3,3,{date}` (3 documents envoyés sur 3, dernier contact
 10 minutes après le 38) : la facture certifiée est partie au serveur de la DGI.
@@ -166,11 +171,12 @@ réponse `E:La commande 35 doit être soumise en premier.` : ❓ non tranché.
 | Fichier | Rôle |
 |---|---|
 | `appareil/trame.py` | envoie UNE trame ; `{IFU}` remplacé par `MCF_IFU` (9 caractères) |
+| `appareil/cycle.py` | client de référence : une facture entière (scénarios simple, deux, annulation), arrêt à la première réponse inattendue |
 | `appareil/carte_client.py` | carte des contrôles de C3 (17 trames) |
 | `appareil/carte_c0.py` | carte des contrôles de C0 (22 trames) |
 | `appareil/recherche_article.py` | grilles de 31 : nombres, nombres2, gabarits, photo, anciens, groupes, psvb ; rdc, taxe, taxe2, groupes_rdc, quantite, psvb_rdc |
 | `appareil/recherche_structure.py`, `recherche_bornee.py` | grilles de nombre de champs et de types de C3 |
-| `simulateur/faux_mcf.py --variante FIS` | jumeau : rend ce qui a été observé ; `C3_OBSERVE` pour les C3 |
+| `simulateur/faux_mcf.py --variante FIS` | jumeau : rend ce qui a été observé, cycle accepté du 28 compris ; `INCONNU` pour le jamais vu |
 
 Cadre de chaque séance : une trame toutes les 3 s, 80 au plus, arrêt au premier message nouveau, au NAK, au silence ou à la
 déconnexion ; EazSell au premier plan ; accord de l'opérateur ; aucun geste irréversible.

@@ -4,9 +4,11 @@ Usage : python3 -m simulateur.faux_mcf --lien <chemin> --journal <fichier> [--va
 Le lien pointe vers l'esclave du pty (pour Wine : $WINEPREFIX/dosdevices/com1).
 Toutes les valeurs sont fictives. NE et BF répondent de façon plausible : l'enjeu est de lire
 ce qu'envoie le SFE. FIS est le jumeau du FIS-NANO : il ne rend que ce que l'appareil a
-répondu (2026-10-09, 2026-10-12) et signale par INCONNU tout cas jamais observé.
+répondu (2026-10-09 au 2026-10-28, cycle complet compris) et signale par INCONNU tout cas jamais observé.
 """
 import argparse
+import base64
+import hashlib
 import os
 import re
 import sys
@@ -17,6 +19,8 @@ NIM, IFU = "XX99999999", "99999999Z"
 TAUX = "0.0,18.0,10.0,0.0,0.0,18.0,10.0,0.0,0.0,0.0,0.0,10.0,10.0,0.0,0.0,0.0"
 PSVB = "2.0,1.0,0.2,0.0"
 SIGNATURE = "ABCD1234EFGH5678IJKL9012"
+TAUX_GROUPES = [float(t) for t in TAUX.split(",")]
+TAUX_PSVB = dict(zip("ABCD", (float(t) for t in PSVB.split(","))))
 INCONNU = "E:?? cas jamais observé sur l'appareil".encode()
 TYPES_FACTURE = ("FV", "FT", "FA", "EV", "ET", "EA")  # note DGI 2025-0889 §2.7
 E_FORMAT = "E:Erreur de format des données ou incompatibilité".encode()
@@ -55,6 +59,7 @@ C3_OBSERVE = {
     b"": b"R",
     b"99988776,CLIENT TEST,,,": b"R",
     b"PP,CLIENT TEST,,,,,": b"R",
+    b"PP,CLIENT TEST,,,70123456,client@example.com,": b"R",  # rattaché au C0 (15 et 28 octobre)
     b"PP,PP,PP,PP,PP,PP,PP": "E:L'adresse e-mail du destinataire n'est pas valide".encode(),
 }
 
@@ -65,6 +70,13 @@ E_TAXE = "E:La taxe est incorrecte!".encode()
 # Types d'article de la note 2025-0889 (annexe). 2026-10-28 : LOCBIE, LOCSER, IMPBIE passent ; le code IMPSERV
 # n'existe pas pour l'appareil, qui doit écrire IMPSER comme la mention imprimée (non essayé)
 TYPES_ARTICLE = (b"LOCBIE", b"LOCSER", b"IMPBIE", b"IMPSER")
+BIENS = (b"LOCBIE", b"IMPBIE")
+C0_EN_PREMIER = "E:La commande C0 doit être soumise en premier".encode()
+
+
+def nombre(v):
+    """Écriture des montants par l'appareil : 102.0, 15.25, 0.0 (2026-10-28)."""
+    return str(round(v, 2))
 C36_OBSERVE = {
     b"A,ESSAI": b"R",
     b"ESSAI": AUCUNE_DONNEE,
@@ -78,6 +90,7 @@ class FauxMCF:
         self.variante, self.journal, self.latence = variante, journal, latence
         self.ventes, self.tc, self.total, self.type, self.ttc = 0, 2, 0.0, "FV", True
         self.ouverte, self.articles, self.commentaires = False, 0, 0
+        self.lignes, self.paye, self.psvb, self.fn, self.client = [], 0.0, None, "", None
         # (données, réponse) en octets : un seul C3 qui s'écarte du message connu.
         # Sert à vérifier qu'une recherche s'arrête. Absent : aucun écart.
         self.nouveau = nouveau
@@ -85,6 +98,62 @@ class FauxMCF:
     def redemarrer(self):
         """Arrêt et rallumage : la facture ouverte disparaît, sans être comptée (2026-10-12)."""
         self.ouverte, self.articles, self.total, self.commentaires = False, 0, 0.0, 0
+        self.lignes, self.paye, self.psvb = [], 0.0, None
+
+    def montants(self):
+        """(total à payer, 16 montants TTC, 16 TVA, PSVB) de la facture ouverte, en mode TTC.
+
+        Vu le 2026-10-28 sur un article de groupe B : TVA du groupe = TTC × taux / (100 + taux) arrondie au
+        centime ; PSVB = taux de la catégorie du C0 × TTC ; total = TTC + PSVB. 🔍 PSVB sur les seuls biens
+        (« prélèvement sur vente de biens », SFE §6.10), TVA calculée par groupe et non par ligne.
+        """
+        ttc = [0.0] * 16
+        for groupe, montant, _ in self.lignes:
+            ttc[ord(groupe) - 65] += montant
+        tva = [round(m * t / (100 + t), 2) for m, t in zip(ttc, TAUX_GROUPES)]
+        biens = sum(m for _, m, ty in self.lignes if ty in BIENS)
+        psvb = round(biens * TAUX_PSVB[self.psvb] / 100, 2)
+        return round(sum(ttc) + psvb, 2), ttc, tva, psvb
+
+    def article(self, ty, tx, prix):
+        """31 dans une facture à PSVB : accepté (une forme vue le 2026-10-28, `B18.0%100.00⇥100.00*1`).
+
+        🔍 Généralisé : groupe A à P au taux lu par C1, montant = prix × quantité, quantité facultative, mode TTC.
+        Tout le reste (autre taux, montant faux, mode HT) n'a jamais été envoyé avec un PSVB : INCONNU.
+        """
+        m = re.fullmatch(rb"([A-P])([0-9.]+)%([0-9.]+)", tx)
+        p = re.fullmatch(rb"([0-9.]+)(?:\*([0-9.]+))?", prix)
+        if not (m and p and self.ttc):
+            return INCONNU
+        groupe = m.group(1).decode()
+        taux = TAUX_GROUPES[ord(groupe) - 65]
+        montant, pu, qte = float(m.group(3)), float(p.group(1)), float(p.group(2) or 1)
+        if abs(float(m.group(2)) - taux) > 1e-9 or abs(montant - pu * qte) > 0.005:
+            return INCONNU
+        self.lignes.append((groupe, montant, ty))
+        self.articles += 1
+        tva = round(montant * taux / (100 + taux), 2)
+        return ",".join(nombre(v) for v in (montant, montant - tva, tva, 0.0)).encode()
+
+    def normaliser(self, data):
+        """38 d'une facture à articles : `MV` seul, le total du 33 (2026-10-28)."""
+        total = self.montants()[0]
+        if self.paye + 0.005 < total:
+            return "E:La commande 35 doit être soumise en premier.".encode()  # 🔍 vu sur une facture sans article
+        if b"," in data:
+            return "E:MV n'est pas un nombre valide.".encode()  # 5 formes à virgule, 2026-10-28
+        try:
+            mv = float(data)
+        except ValueError:
+            return INCONNU
+        if abs(mv - total) > 0.005:
+            return INCONNU
+        self.ventes += 1; self.tc += 1
+        sig = base64.b32encode(hashlib.sha256(("%s|%d" % (self.fn, self.tc)).encode()).digest()).decode()[:24]
+        r = "%d,%d,%s,%s,%s-1,%s,%s,%s" % (self.ventes, self.tc, self.type, time.strftime("%Y%m%d%H%M%S"),
+                                          NIM, IFU, sig, self.fn)
+        self.redemarrer()
+        return r.encode()
 
     def repondre(self, seq, cmd, data):
         """Trame complète. FIS : C3 pendant une facture ouverte = NAK puis trame vide, statut A2 (2026-10-12)."""
@@ -105,12 +174,24 @@ class FauxMCF:
                 r = self.nouveau[1]
                 return r if isinstance(r, bytes) else r.encode("latin-1")
             if data in C3_OBSERVE:
+                if C3_OBSERVE[data] == b"R" and len(champs) == 7:
+                    self.client = ",".join(champs[1:])  # recopié par le C0 suivant (champs 2 à 7)
                 return C3_OBSERVE[data]
             return b"E:Erreur de type de destinataire"
         if cmd == 0xC0:
             if len(champs) < 4 or champs[3] not in TYPES_FACTURE:
                 return E_FORMAT  # formats béninois du 09 (taux en 4e champ)
-            self.ouverte, self.articles, self.commentaires = True, 0, 0
+            # PSVB : 8e champ à 8 champs, dernier à 10 ; `x` refusé, `A` accepté (15 octobre)
+            psvb = champs[7] if len(champs) == 8 else champs[9] if len(champs) == 10 else None
+            if psvb is not None and psvb not in TAUX_PSVB:
+                return "E:PSVB n'existe pas!".encode()
+            self.redemarrer()
+            self.ouverte, self.psvb = True, psvb
+            self.type, self.ttc = champs[3], (champs[4] if len(champs) > 4 else "") != "HT"
+            self.fn = champs[6] if len(champs) > 6 else ""
+            client, self.client = self.client, None
+            if client is not None:
+                return ("%d,%d,%s" % (self.ventes + 1, self.tc + 1, client)).encode()
             return None
         if cmd == 0x36:
             if not self.ouverte:
@@ -121,19 +202,33 @@ class FauxMCF:
             return r
         if cmd == 0x31:
             if not self.ouverte:
-                return "E:La commande C0 doit être soumise en premier".encode()
-            # 2026-10-28 : la forme RDC `nom⇥TYPE,X%Y⇥prix` est lue. Format sans `%` ou avec `;` au prix ;
-            # puis le type (BIE : n'existe pas ; LOCBIE passe) ; puis la taxe, jamais acceptée (25 formes)
+                return C0_EN_PREMIER
+            # 2026-10-28 : la forme RDC `nom⇥TYPE,X%Y⇥prix` est lue. Format sans `%`, ou `;` sans `T` au prix ;
+            # puis le type (BIE, IMPSERV : n'existe pas) ; puis la taxe : sans PSVB au C0, toujours incorrecte
             parties = data.split(b"\t")
             if len(parties) == 3 and b"," in parties[1]:
                 ty, _, tx = parties[1].partition(b",")
-                if b"%" not in tx or b";" in parties[2]:
+                if b"%" not in tx or re.search(rb";(?!T)", parties[2]):
                     return E_FORMAT
                 if ty not in TYPES_ARTICLE:
                     return "E:Le type de produit n'existe pas".encode()
-                return E_TAXE
-            # aucune forme d'article acceptée connue : plus de 500 formes refusées (09 au 15)
+                if self.psvb is None:
+                    return E_TAXE
+                return self.article(ty, tx, parties[2])
+            # forme sans type : plus de 500 refusées (09 au 15)
             return E_FORMAT
+        if cmd == 0x33 and self.ouverte and self.articles:
+            total, ttc, tva, psvb = self.montants()
+            return ",".join(nombre(v) for v in [total] + ttc + tva + [psvb, 0.0]).encode()
+        if cmd == 0x35 and self.ouverte and self.articles:
+            m = re.fullmatch(rb"E([0-9.]+)", data)  # seules les espèces ont été essayées
+            if not m:
+                return INCONNU
+            self.paye += float(m.group(1))
+            # payé exactement : R0 ; paiement partiel ou excédent : jamais vu
+            return b"R0" if abs(self.paye - self.montants()[0]) <= 0.005 else INCONNU
+        if cmd == 0x38 and self.ouverte and self.articles:
+            return self.normaliser(data)
         if cmd == 0x38 and self.ouverte and not self.articles and data:
             return "E:La commande 35 doit être soumise en premier.".encode()  # 38 `C`, 2026-10-28
         if cmd in (0x33, 0x35, 0x38) and self.ouverte and not self.articles:
@@ -142,7 +237,10 @@ class FauxMCF:
             return {0x33: b"E:Veuillez ajouter le produit en premier" + point,
                     0x35: "E:Le montant payé est suffisant".encode(),
                     0x38: "E:Aucune donnée valide n'a été reçue".encode()}[cmd]
-        if cmd in (0xC1, 0xC2, 0x2B):
+        if cmd in (0xC1, 0xC2):
+            self.redemarrer()  # C1 et C2 annulent la facture ouverte, sans la compter (2026-10-12)
+            return None
+        if cmd == 0x2B:
             return None
         return INCONNU
 

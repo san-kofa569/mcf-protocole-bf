@@ -5,7 +5,7 @@ import tty
 import unittest
 
 from appareil.trame import bcc_ok, trame
-from simulateur.faux_mcf import INCONNU, FauxMCF, lire_requete, reponse
+from simulateur.faux_mcf import C0_EN_PREMIER, INCONNU, FauxMCF, lire_requete, reponse
 
 
 class Reponse(unittest.TestCase):
@@ -195,6 +195,75 @@ class JumeauFisNano(unittest.TestCase):
     def test_2b_i0_inchange(self):
         r = self.mcf.repondre(0x70, 0x2B, b"I0")
         self.assertEqual(r[0], 0x01)
+
+
+class CycleFisNano(unittest.TestCase):
+    """Le cycle accepté le 2026-10-28 (ESSAI-0008), réponse par réponse, puis ce qui n'a jamais été vu."""
+
+    C3 = b"PP,CLIENT TEST,,,70123456,client@example.com,"
+    C0 = b"1,Essai,{IFU},FV,TTC,ISF-ESSAI,ESSAI-0008,A"
+    ARTICLE = b"ARTICLE TEST\tLOCBIE,B18.0%100.00\t100.00*1"
+    SOUS_TOTAL = ("102.0,0.0,100.0" + ",0.0" * 15 + ",15.25" + ",0.0" * 14 + ",2.0,0.0").encode()
+
+    def setUp(self):
+        self.mcf = FauxMCF(variante="FIS")
+
+    def ouvrir(self, c0=C0):
+        self.assertEqual(self.mcf.donnees(0xC3, self.C3), b"R")
+        self.assertEqual(self.mcf.donnees(0xC0, c0), b"1,3,CLIENT TEST,,,70123456,client@example.com,")
+
+    def test_cycle_du_28_octobre(self):
+        self.ouvrir()
+        self.assertEqual(self.mcf.donnees(0x31, self.ARTICLE), b"100.0,84.75,15.25,0.0")
+        self.assertEqual(self.mcf.donnees(0x33, b""), self.SOUS_TOTAL)
+        self.assertEqual(len(self.SOUS_TOTAL.split(b",")), 35)
+        self.assertEqual(self.mcf.donnees(0x35, b"E102.00"), b"R0")
+        for d in (b"102.00,15.25", b"102.0,15.25", b"102,15.25", b"102.00,15.25,2.00", b"102,15,2"):
+            self.assertEqual(self.mcf.donnees(0x38, d), "E:MV n'est pas un nombre valide.".encode())
+        f = self.mcf.donnees(0x38, b"102.00").decode().split(",")
+        self.assertEqual(len(f), 8)
+        self.assertEqual(f[:3], ["1", "3", "FV"])
+        self.assertRegex(f[3], r"^\d{14}$")
+        self.assertEqual((f[4], f[5], f[7]), ("XX99999999-1", "99999999Z", "ESSAI-0008"))
+        self.assertRegex(f[6], r"^[A-Z2-7]{24}$")
+        self.assertEqual(self.mcf.donnees(0xC2, b"").split(b",")[:2], [b"3", b"3"])  # 12:53 : 3,3
+        self.assertEqual(self.mcf.donnees(0x31, self.ARTICLE), C0_EN_PREMIER)  # facture close
+
+    def test_sans_psvb_toute_taxe_est_incorrecte(self):
+        self.ouvrir(b"1,Essai,{IFU},FV,TTC,ISF-ESSAI,ESSAI-0007")
+        self.assertEqual(self.mcf.donnees(0x31, self.ARTICLE), "E:La taxe est incorrecte!".encode())
+
+    def test_psvb_inconnu_refuse(self):
+        self.assertEqual(self.mcf.donnees(0xC0, b"1,Essai,{IFU},FV,TTC,ISF-ESSAI,R,x"), "E:PSVB n'existe pas!".encode())
+
+    def test_c1_annule_la_facture(self):
+        self.ouvrir()
+        self.mcf.donnees(0x31, self.ARTICLE)
+        self.mcf.donnees(0xC1, b"")
+        self.assertEqual(self.mcf.donnees(0x33, b""), INCONNU)  # plus de facture ouverte : jamais vu
+
+    def test_38_avant_le_paiement(self):
+        self.ouvrir()
+        self.mcf.donnees(0x31, self.ARTICLE)
+        self.assertEqual(self.mcf.donnees(0x38, b"102.00"), "E:La commande 35 doit être soumise en premier.".encode())
+
+    def test_jamais_vu_reste_inconnu(self):
+        self.ouvrir()
+        self.assertEqual(self.mcf.donnees(0x31, b"ARTICLE TEST\tLOCBIE,B10.0%100.00\t100.00*1"), INCONNU)  # taux faux
+        self.assertEqual(self.mcf.donnees(0x31, b"ARTICLE TEST\tLOCBIE,B18.0%90.00\t100.00*1"), INCONNU)  # montant faux
+        self.mcf.donnees(0x31, self.ARTICLE)
+        self.assertEqual(self.mcf.donnees(0x35, b"M102.00"), INCONNU)  # mobile money
+        self.assertEqual(self.mcf.donnees(0x35, b"E50.00"), INCONNU)  # paiement partiel
+        self.mcf.donnees(0x35, b"E52.00")
+        self.assertEqual(self.mcf.donnees(0x38, b"99.00"), INCONNU)  # MV faux
+
+    def test_deux_articles_tva_par_groupe(self):
+        # 🔍 généralisation : deux groupes, PSVB sur les seuls biens
+        self.ouvrir()
+        self.assertEqual(self.mcf.donnees(0x31, b"PAIN\tLOCBIE,A0.0%50.00\t25.00*2"), b"50.0,50.0,0.0,0.0")
+        self.assertEqual(self.mcf.donnees(0x31, b"POSE\tLOCSER,C10.0%110.00\t110.00"), b"110.0,100.0,10.0,0.0")
+        f = self.mcf.donnees(0x33, b"").split(b",")
+        self.assertEqual((f[0], f[1], f[3], f[19], f[33]), (b"161.0", b"50.0", b"110.0", b"10.0", b"1.0"))
 
 
 class Liaison(unittest.TestCase):

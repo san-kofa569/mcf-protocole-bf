@@ -356,11 +356,11 @@ class PsvbRdc(unittest.TestCase):
         envoyees = {d for f in (taxe, taxe2, groupes_rdc, quantite) for _, d in f()}
         self.assertFalse(envoyees & set(g.values()))
 
-    def test_au_jumeau(self):
-        # le jumeau ne connaît ni `;T` ni un 3e sous-champ : il rend le message de format, qui arrête la grille
+    def test_au_jumeau_comme_sur_l_appareil(self):
+        # 2026-10-28 : les 12 trames, `;T0,0` et le 3e sous-champ compris, ont buté sur la taxe (C0 sans PSVB)
         code, sortie = lancer("--jumeau", "--grille", "psvb_rdc")
-        self.assertEqual(code, 1)
-        self.assertIn("ARRÊT psvb/specifique;T0,0", sortie)
+        self.assertEqual(code, 0)
+        self.assertIn("terminé : 12 trames, « E:La taxe est incorrecte! » partout.", sortie)
 
 
 class Commande(unittest.TestCase):
