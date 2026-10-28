@@ -232,3 +232,14 @@ Captures : `appareil/brut/2026-10-28_seance.txt` (hors dépôt).
   31 `POSE^x2c; TEST⇥IMPSER,C10.0%110.00⇥110.00*1` → `110.0,100.0,10.0,0.0`, 33 → `210.0,…,0.0,0.0` (PSVB 0),
   35 `V70.00` → `R-140.0`, `C70.00` → `R-70.0`, `D70.00` → `R0`, 38 → **`5/8 FV`**.
 - Le reçu d'ESSAI-0008 ouvert sur l'appareil ne montre **pas de QR** : à construire par le logiciel, format à obtenir.
+
+## 15. Le code QR, par nos propres moyens (16:15)
+
+- Textes : l'arrêté sur les conditions d'émission de la FEC renvoie à l'article 564 du CGI ; l'arrêté 2023-00216 (dans le
+  dépôt du logiciel de facturation) porte sur les stickers de l'ancienne facture normalisée ; la spécification SFE nomme la
+  mention z) « éléments de sécurité » sans format. Le portail développeur de la DGI est en maintenance. Aucune source
+  publique ne donne le contenu du QR burkinabè.
+- ECOHADA écrit le même QR pour le Bénin et le Niger : `F;` + identifiant + `;` + signature + `;` + IFU + `;` + date.
+  Hypothèse retenue pour le Burkina (même famille, même nom de système que le Niger), `appareil/qr.py`.
+- Preuve sans tiers : le ticket imprimé par l'appareil, scanné, comparé à la réponse du 38 de la même facture
+  (`python3 -m appareil.qr --comparer`).

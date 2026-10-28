@@ -171,7 +171,10 @@ Mentions à imprimer (📜 note 0887 §2.10.3–2.10.4), tirées de cette répon
 **identificateur de machine** `(NIM)-(ACNT)` = le 5e champ tel quel (`{NIM}-1` : ACNT = compteur d'activation) ;
 **compteurs** `(CPIT)/(FDOC) (ITL)` = champs 1, 2 et 3 (`1/3 FV` : 1re facture de vente, 3 transactions) ;
 **date et heure du MCF** = le 4e champ ; **code QR** « au format défini par l'Administration » : ❓ non publié, et le reçu
-de l'application fiscale n'en montre pas (2026-10-28) : le logiciel de facturation le construit, format à obtenir.
+de l'application fiscale n'en montre pas (2026-10-28) : le logiciel de facturation le construit. 🔍 **Hypothèse** : le
+gabarit qu'ECOHADA écrit pour le Bénin et le Niger (même famille SyGMEF), `F;{identifiant};{signature};{IFU};{date}`, tiré des
+champs 5, 7, 6 et 4 du 38 (`appareil/qr.py`). Preuve à faire : scanner le QR d'un ticket imprimé par l'appareil et le
+comparer à la capture (`python3 -m appareil.qr --comparer …`, qui ne montre que la place de chaque morceau).
 ✅ En mode Test, la signature commence par `TESTFACT` (3 signatures sur 3), suivie de 16 caractères propres à la facture.
 ✅ C1 garde la dernière facture certifiée : date (7e champ), type (8e), signature (9e), **nombre total de factures**
 (10e : ventes et avoirs, 4 après FV n°3 et FA n°1), montant (11e). Compteurs (4e à 6e) : transactions, ventes, avoirs.
@@ -199,7 +202,8 @@ premier.` ; une facture non payée s'annule par C1, C2 ou un rallumage (non comp
 | Fichier | Rôle |
 |---|---|
 | `appareil/trame.py` | envoie UNE trame ; `{IFU}` remplacé par `MCF_IFU` (9 caractères) |
-| `appareil/cycle.py` | client de référence : une facture entière (scénarios simple, deux, annulation), arrêt à la première réponse inattendue |
+| `appareil/cycle.py` | client de référence : une facture entière (scénarios simple, deux, annulation, ht, credit, modes, avoir), arrêt à la première réponse inattendue |
+| `appareil/signature.py`, `appareil/qr.py` | signature ou identifiant lus dans une capture (pour `export`) ; QR selon l'hypothèse, et comparaison d'un QR scanné |
 | `appareil/carte_client.py` | carte des contrôles de C3 (17 trames) |
 | `appareil/carte_c0.py` | carte des contrôles de C0 (22 trames) |
 | `appareil/recherche_article.py` | grilles de 31 : nombres, nombres2, gabarits, photo, anciens, groupes, psvb ; rdc, taxe, taxe2, groupes_rdc, quantite, psvb_rdc |
