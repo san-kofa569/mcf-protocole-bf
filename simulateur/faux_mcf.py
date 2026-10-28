@@ -68,8 +68,9 @@ C3_OBSERVE = {
 AUCUNE_DONNEE = "E:Aucune donnée valide n'a été reçue".encode()
 E_TAXE = "E:La taxe est incorrecte!".encode()
 # Types d'article de la note 2025-0889 (annexe). 2026-10-28 : LOCBIE, LOCSER, IMPBIE passent ; le code IMPSERV
-# n'existe pas pour l'appareil, qui doit écrire IMPSER comme la mention imprimée (non essayé)
-TYPES_ARTICLE = (b"LOCBIE", b"LOCSER", b"IMPBIE", b"IMPSER")
+# n'existe pas pour l'appareil, qui écrit peut-être IMPSER comme la mention imprimée (jamais essayé : INCONNU)
+TYPES_ARTICLE = (b"LOCBIE", b"LOCSER", b"IMPBIE")
+TYPES_NON_ESSAYES = (b"IMPSER",)
 C0_EN_PREMIER = "E:La commande C0 doit être soumise en premier".encode()
 
 
@@ -235,6 +236,8 @@ class FauxMCF:
                 ty, _, tx = parties[1].partition(b",")
                 if b"%" not in tx or re.search(rb";(?!T)", parties[2]):
                     return E_FORMAT
+                if ty in TYPES_NON_ESSAYES:
+                    return INCONNU
                 if ty not in TYPES_ARTICLE:
                     return "E:Le type de produit n'existe pas".encode()
                 if self.psvb is None:

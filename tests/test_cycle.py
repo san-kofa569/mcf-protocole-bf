@@ -118,6 +118,28 @@ class Avoir(unittest.TestCase):
         self.assertIn("ARRÊT : aucune forme acceptée, rien d'ouvert.", sortie)
 
 
+class EssaisRestants(unittest.TestCase):
+    def test_ht_ouvre_en_ht(self):
+        self.assertEqual(etapes("ht", "ESSAI-0011")[1][2], "1,Essai,{IFU},FV,HT,ISF-ESSAI,ESSAI-0011,A")
+
+    def test_credit_paie_le_total_en_mode_a(self):
+        e = etapes("credit", "ESSAI-0012")
+        self.assertEqual(e[4][2]({"total": 102.0}), "A102.00")
+
+    def test_modes_psvb_d_impser_virgule_et_trois_paiements(self):
+        e = etapes("modes", "ESSAI-0013")
+        self.assertTrue(e[1][2].endswith(",D"))
+        self.assertEqual(e[3][2], "POSE^x2c; TEST\tIMPSER,C10.0%110.00\t110.00*1")
+        self.assertEqual([e[i][2]({"total": 210.0, "du": 70.0}) for i in (5, 6, 7)], ["V70.00", "C70.00", "D70.00"])
+
+    def test_au_jumeau_chacun_s_arrete_au_jamais_vu(self):
+        for scenario, arret in (("ht", "article 31"), ("credit", "credit 35"), ("modes", "service 31")):
+            code, sortie = lancer("--scenario", scenario, "--fn", "X", "--jumeau")
+            self.assertEqual(code, 1, scenario)
+            ligne = next(l for l in sortie.splitlines() if "E:??" in l)
+            self.assertIn(arret, ligne, scenario)
+
+
 class Garde(unittest.TestCase):
     def test_avoir_sans_mcf_nim_rien_ne_part(self):
         with mock.patch.dict(os.environ, {"MCF_IFU": "99999999Z"}, clear=True), \

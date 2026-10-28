@@ -15,6 +15,10 @@ Scénarios :
               plusieurs lignes, PSVB sur un service, mode M, paiement partiel ;
   annulation  un bien payé, puis 38 `C` : `E:ANNULEE`, facture non comptée (prouvé le 2026-10-28, 14:56).
               Sans 35, le 38 `C` répond « La commande 35 doit être soumise en premier. » : avant paiement, C1 annule.
+  ht          un bien en mode HT (C0 `HT`), le mode par défaut du module de facturation : jamais essayé ;
+  credit      un bien vendu à crédit : 35 en mode `A` (📖 RDC : crédit, « autre ») pour le total ;
+  modes       PSVB `D` (taux 0), un bien et un service `IMPSER` dont la désignation porte une virgule échappée
+              (`^x2c;`, 📖 RDC), payés en trois modes `V`, `C`, `D` (📖) ;
   avoir       avoir de correction (FA, nature COR) d'une facture « deux » : C0 `op,nom,IFU,FA,COR,RN,TTC,ISF,FN,PSVB`
               avec RN = `{NIM-ACNT}-{TC d'origine}` (AVOIR-0001 certifié le 2026-10-28 15:13), puis les lignes, 33,
               35 et 38 comme une vente. MCF_NIM vient de `python3 -m appareil.signature … --nim` ; --origine donne
@@ -45,6 +49,7 @@ DELAI = 3.0
 CLIENT = "PP,CLIENT TEST,,,70123456,client@example.com,"
 BIEN = "ARTICLE TEST\tLOCBIE,B18.0%100.00\t100.00*1"
 SERVICE = "POSE TEST\tLOCSER,C10.0%110.00\t110.00*1"
+SERVICE_IMPORTE = "POSE^x2c; TEST\tIMPSER,C10.0%110.00\t110.00*1"  # « POSE, TEST » : virgule échappée
 FORMAT = "E:Erreur de format des données ou incompatibilité"
 FORMAT_RN = "E:Erreur de format RN!"
 # C0 d'avoir (📖 RDC `type,nature,référence` à la place du type ; nature 📜 COR, RAN, RAM, RRR). RN prouvée le
@@ -82,6 +87,22 @@ def etapes(scenario, fn, origine=("ESSAI-0009", "2", "4")):
                         ("mobile", 0x35, "M100.00"),
                         ("reste", 0x35, lambda e: "E" + montant(e["du"])),
                         ("normalisation", 0x38, lambda e: montant(e["total"]))]
+    if scenario == "ht":
+        return [("client", 0xC3, CLIENT), ("ouverture", 0xC0, "1,Essai,{IFU},FV,HT,ISF-ESSAI,%s,A" % fn),
+                ("article", 0x31, BIEN), ("sous-total", 0x33, ""),
+                ("paiement", 0x35, lambda e: "E" + montant(e["total"])),
+                ("normalisation", 0x38, lambda e: montant(e["total"]))]
+    if scenario == "credit":
+        return debut + [("article", 0x31, BIEN), ("sous-total", 0x33, ""),
+                        ("credit", 0x35, lambda e: "A" + montant(e["total"])),
+                        ("normalisation", 0x38, lambda e: montant(e["total"]))]
+    if scenario == "modes":
+        tiers = lambda e: montant(round(e["total"] / 3, 2))
+        return [("client", 0xC3, CLIENT), ("ouverture", 0xC0, "1,Essai,{IFU},FV,TTC,ISF-ESSAI,%s,D" % fn),
+                ("bien", 0x31, BIEN), ("service", 0x31, SERVICE_IMPORTE), ("sous-total", 0x33, ""),
+                ("virement", 0x35, lambda e: "V" + tiers(e)), ("carte", 0x35, lambda e: "C" + tiers(e)),
+                ("cheque", 0x35, lambda e: "D" + montant(e["du"])),
+                ("normalisation", 0x38, lambda e: montant(e["total"]))]
     if scenario == "avoir":
         rn = lambda f: (f.replace("{fn_origine}", origine[0]).replace("{numero_origine}", origine[1])
                         .replace("{tc_origine}", origine[2]))
@@ -199,7 +220,8 @@ def jouer(scenario, fn, envoyer, delai=0.0, tracer=print, origine=("ESSAI-0009",
 
 def main(argv=None, mcf=None):
     a = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    a.add_argument("--scenario", choices=("simple", "deux", "annulation", "avoir"), required=True)
+    a.add_argument("--scenario", choices=("simple", "deux", "annulation", "ht", "credit", "modes", "avoir"),
+                   required=True)
     a.add_argument("--fn", required=True, help="référence de la facture, jamais réutilisée (ESSAI-0009…)")
     a.add_argument("--origine", default="ESSAI-0009,2,4", help="avoir : FN, numéro et TC de la facture d'origine")
     a.add_argument("--liste", action="store_true", help="afficher les trames, ne rien envoyer")
