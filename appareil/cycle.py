@@ -15,12 +15,10 @@ Scénarios :
               plusieurs lignes, PSVB sur un service, mode M, paiement partiel ;
   annulation  un bien payé, puis 38 `C` : `E:ANNULEE`, facture non comptée (prouvé le 2026-10-28, 14:56).
               Sans 35, le 38 `C` répond « La commande 35 doit être soumise en premier. » : avant paiement, C1 annule.
-  avoir       avoir de correction (FA, nature COR) d'une facture « deux ». Le C0 `op,nom,IFU,FA,COR,RN,TTC,ISF,FN,PSVB`
-              est lu (2026-10-28 15:06) ; la signature brute en RN répond `Erreur de format RN! <RN>`. Chaque forme
-              de RN est essayée (C3 puis C0), la suivante tant que la réponse est un message de format ; la valeur
-              renvoyée est masquée à l'écran. Déjà refusés : signature brute, signature à tirets, FN et numéro
-              d'origine. Formes essayées : `NIM-TC` (référence d'origine d'ECOHADA au Niger), puis voisines.
-              MCF_NIM vient de `python3 -m appareil.signature … --nim` ; --origine donne FN, numéro et TC d'origine.
+  avoir       avoir de correction (FA, nature COR) d'une facture « deux » : C0 `op,nom,IFU,FA,COR,RN,TTC,ISF,FN,PSVB`
+              avec RN = `{NIM-ACNT}-{TC d'origine}` (AVOIR-0001 certifié le 2026-10-28 15:13), puis les lignes, 33,
+              35 et 38 comme une vente. MCF_NIM vient de `python3 -m appareil.signature … --nim` ; --origine donne
+              FN, numéro et TC de la facture d'origine. Un refus de RN (`Erreur de format RN! <RN>`) est masqué.
 
 Sur l'appareil, chaque réponse est écrite brute dans `--capture` (appareil/brut/, hors dépôt) : c'est là que se
 lisent NIM, IFU et signature, jamais à l'écran.
@@ -49,13 +47,11 @@ BIEN = "ARTICLE TEST\tLOCBIE,B18.0%100.00\t100.00*1"
 SERVICE = "POSE TEST\tLOCSER,C10.0%110.00\t110.00*1"
 FORMAT = "E:Erreur de format des données ou incompatibilité"
 FORMAT_RN = "E:Erreur de format RN!"
-# C0 d'avoir (📖 RDC `type,nature,référence` à la place du type ; nature 📜 COR, RAN, RAM, RRR) : la structure passe,
-# la référence RN est jugée. Refusées le 2026-10-28 : signature brute, à tirets, FN et numéro d'origine. À essayer :
+# C0 d'avoir (📖 RDC `type,nature,référence` à la place du type ; nature 📜 COR, RAN, RAM, RRR). RN prouvée le
+# 2026-10-28 : identifiant de l'appareil tel qu'il l'écrit (NIM-ACNT), tiret, TC de la facture d'origine. Refusées :
+# signature brute, à tirets, FN d'origine, numéro d'origine, NIM-TC sans le compteur d'activation.
 AVOIRS = (
-    ("rn-nim-tc", "{NIM}-{tc_origine}"),  # ECOHADA, Niger : « (NIM-)TC de facture originale »
     ("rn-nim-acnt-tc", "{NIM-ACNT}-{tc_origine}"),
-    ("rn-compteurs", "{numero_origine}/{tc_origine} FV"),  # identifiant unique (CPIT)/(FDOC) (ITL), note 0887 §2.10.4
-    ("rn-nim-numero", "{NIM}-{numero_origine}"),
 )
 C0_AVOIR = "1,Essai,{IFU},FA,COR,%s,TTC,ISF-ESSAI,%s,A"
 

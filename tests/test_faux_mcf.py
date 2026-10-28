@@ -275,11 +275,27 @@ class CycleFisNano(unittest.TestCase):
         self.assertEqual(self.mcf.donnees(0x35, b"E-114.20"), b"R-228.4")
         self.assertEqual(self.mcf.donnees(0x38, b"214.20").split(b",")[:3], [b"2", b"4", b"FV"])
 
-    def test_avoir_a_sept_champs_format_autres_inconnues(self):
+    def test_avoir_a_sept_champs_format(self):
         self.assertEqual(self.mcf.donnees(0xC0, b"1,Essai,{IFU},FA,TTC,ISF-ESSAI,AV-1"), E_FORMAT_ATTENDU)
-        self.assertEqual(self.mcf.donnees(0xC0, b"1,Essai,{IFU},FA,COR,ABCDEFGHIJKLMNOPQRSTUV23,TTC,ISF-ESSAI,AV-1,A"),
-                         b"E:Erreur de format RN! ABCDEFGHIJKLMNOPQRSTUV23")
-        self.assertEqual(self.mcf.donnees(0xC0, b"1,Essai,{IFU},FA,COR,ESSAI-0009,TTC,ISF-ESSAI,AV-1,A"), INCONNU)
+
+    def test_avoir_rn_refusees_le_28(self):
+        for rn in (b"ABCDEFGHIJKLMNOPQRSTUV23", b"ABCD-EFGH-IJKL-MNOP-QRST-UV23", b"ESSAI-0009", b"2", b"XX99999999-4"):
+            self.assertEqual(self.mcf.donnees(0xC0, b"1,Essai,{IFU},FA,COR," + rn + b",TTC,ISF-ESSAI,AV-1,A"),
+                             b"E:Erreur de format RN! " + rn)
+
+    def test_avoir_d_une_facture_certifiee(self):
+        # AVOIR-0001, 15:13 : RN = NIM-ACNT-TC d'origine ; avoir n°1 ; compteur des avoirs à part ; type FA au 38
+        self.ouvrir()
+        self.mcf.donnees(0x31, self.ARTICLE); self.mcf.donnees(0x35, b"E102.00")
+        self.assertEqual(self.mcf.donnees(0x38, b"102.00").split(b",")[:3], [b"1", b"3", b"FV"])
+        self.mcf.donnees(0xC3, self.C3)
+        self.assertEqual(self.mcf.donnees(0xC0, b"1,Essai,{IFU},FA,COR,XX99999999-1-3,TTC,ISF-ESSAI,AV-1,A"),
+                         b"1,4,CLIENT TEST,,,70123456,client@example.com,")
+        self.mcf.donnees(0x31, self.ARTICLE)
+        self.assertEqual(self.mcf.donnees(0x35, b"E102.00"), b"R0")
+        f = self.mcf.donnees(0x38, b"102.00").split(b",")
+        self.assertEqual((f[0], f[1], f[2], f[7]), (b"1", b"4", b"FA", b"AV-1"))
+        self.assertEqual(self.mcf.donnees(0xC1, b"").split(b",")[3:6], [b"4", b"1", b"1"])
 
     def test_38_c_apres_le_35_annule_sans_compter(self):
         # 2026-10-28 14:56 : ESSAI-0010 payée puis annulée ; C1 suivant : compteurs inchangés, statut normal

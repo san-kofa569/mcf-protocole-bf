@@ -88,6 +88,7 @@ class FauxMCF:
     def __init__(self, variante="NE", journal=None, latence=0.0, nouveau=None):
         self.variante, self.journal, self.latence = variante, journal, latence
         self.ventes, self.tc, self.total, self.type, self.ttc = 0, 2, 0.0, "FV", True
+        self.avoirs, self.certifiees = 0, set()  # TC des factures de vente certifiées, que RN peut désigner
         self.ouverte, self.articles, self.commentaires = False, 0, 0
         self.lignes, self.paye, self.paiements, self.psvb, self.fn, self.client = [], 0.0, 0, None, "", None
         # (données, réponse) en octets : un seul C3 qui s'écarte du message connu.
@@ -150,10 +151,17 @@ class FauxMCF:
             return INCONNU
         if abs(mv - total) > 0.005:
             return INCONNU
-        self.ventes += 1; self.tc += 1
+        avoir = self.type in ("FA", "EA")
+        if avoir:
+            self.avoirs += 1
+        else:
+            self.ventes += 1
+        self.tc += 1
+        if not avoir:
+            self.certifiees.add(self.tc)
         sig = base64.b32encode(hashlib.sha256(("%s|%d" % (self.fn, self.tc)).encode()).digest()).decode()[:24]
-        r = "%d,%d,%s,%s,%s-1,%s,%s,%s" % (self.ventes, self.tc, self.type, time.strftime("%Y%m%d%H%M%S"),
-                                          NIM, IFU, sig, self.fn)
+        r = "%d,%d,%s,%s,%s-1,%s,%s,%s" % (self.avoirs if avoir else self.ventes, self.tc, self.type,
+                                          time.strftime("%Y%m%d%H%M%S"), NIM, IFU, sig, self.fn)
         self.redemarrer()
         return r.encode()
 
@@ -184,13 +192,20 @@ class FauxMCF:
             if len(champs) < 4 or champs[3] not in TYPES_FACTURE:
                 return E_FORMAT  # formats béninois du 09 (taux en 4e champ)
             if champs[3] in ("FA", "EA"):
-                # avoir : à 7 champs, message de format (15 octobre). `FA,COR,RN,TTC,ISF,FN,PSVB` est lu, et une
-                # signature brute de 24 caractères en RN répond « Erreur de format RN! » suivi du RN (28 octobre)
+                # avoir : à 7 champs, message de format (15 octobre). `FA,COR,RN,TTC,ISF,FN,PSVB` est lu (28 octobre) :
+                # RN = identifiant `NIM-ACNT` + `-` + TC de la facture d'origine (AVOIR-0001, 15:13) ; toute autre RN
+                # essayée (signature brute ou à tirets, FN, numéro, `NIM-TC` sans ACNT) : « Erreur de format RN! » + RN
                 if len(champs) == 7:
                     return E_FORMAT
-                if len(champs) == 10 and champs[4] == "COR" and re.fullmatch(r"[A-Z0-9]{24}|\{SIG\}", champs[5]):
+                if len(champs) != 10 or champs[4] != "COR":
+                    return INCONNU  # autres natures et autres formes : jamais essayées
+                rn = re.fullmatch(r"(?:%s-1|\{NIM-ACNT\})-(\d+)" % NIM, champs[5])
+                if not (rn and int(rn.group(1)) in self.certifiees):
                     return ("E:Erreur de format RN! " + champs[5]).encode()
-                return INCONNU
+                self.redemarrer()
+                self.ouverte, self.psvb, self.type, self.ttc, self.fn = True, champs[9], champs[3], champs[6] != "HT", champs[8]
+                client, self.client = self.client, None
+                return ("%d,%d,%s" % (self.avoirs + 1, self.tc + 1, client if client is not None else ",,,,,")).encode()
             # PSVB : 8e champ à 8 champs, dernier à 10 ; `x` refusé, `A` accepté (15 octobre)
             psvb = champs[7] if len(champs) == 8 else champs[9] if len(champs) == 10 else None
             if psvb is not None and psvb not in TAUX_PSVB:
@@ -270,7 +285,7 @@ class FauxMCF:
                 return r
         if cmd == 0xC1:
             vides = ",,,," if self.variante == "NE" else ",,,,,,"  # BF et FIS : 31 champs
-            r = "%s-1,%s,%s,%d,%d,0%s%s,%s" % (NIM, IFU, maintenant, self.tc, self.ventes, vides, TAUX, PSVB)
+            r = "%s-1,%s,%s,%d,%d,%d%s%s,%s" % (NIM, IFU, maintenant, self.tc, self.ventes, self.avoirs, vides, TAUX, PSVB)
         elif cmd == 0xC2:
             r = "%d,%d,%s" % (self.tc, self.tc, maintenant)
         elif cmd == 0x2B:

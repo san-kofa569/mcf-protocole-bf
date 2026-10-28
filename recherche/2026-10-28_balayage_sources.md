@@ -191,3 +191,18 @@ Captures : `appareil/brut/2026-10-28_seance.txt` (hors dépôt).
   écho masqué à l'écran).
 - 15:10 : RN = signature à tirets, FN d'origine, numéro d'origine → même refus ; l'écho reprend la valeur telle quelle.
   Suite : `NIM-TC` (forme d'ECOHADA au Niger), `NIM-ACNT-TC`, `2/4 FV` (identifiant unique de la note 0887), `NIM-2`.
+
+## 12. Premier avoir certifié (15:13)
+
+| Heure | Trame | Réponse |
+|---|---|---|
+| 15:13:36 | C0 `…,FA,COR,{NIM}-4,TTC,ISF-ESSAI,AVOIR-0001,A` | `E:Erreur de format RN!` |
+| 15:13:42 | C0 `…,FA,COR,{NIM-ACNT}-4,TTC,ISF-ESSAI,AVOIR-0001,A` | **`1,5,CLIENT TEST,…`** |
+| 15:13:45–49 | 31 bien B ; 31 service C | `100.0,84.75,15.25,0.0` ; `110.0,100.0,10.0,0.0` |
+| 15:13:52 | 33 | total `214.2`, PSVB `4.2` |
+| 15:13:55 | 35 `E214.20` | `R0` |
+| 15:13:58 | 38 `214.20` | accepté : compteurs **`1/5 FA`** |
+
+- ✅ RN = identifiant de l'appareil `NIM-ACNT` + `-` + TC de la facture d'origine. ESSAI-0009, aux paiements incohérents,
+  est corrigée par l'avoir AVOIR-0001 (nature COR, mêmes lignes).
+- Le cycle d'une facture et de son avoir est complet : vente, annulation, avoir.

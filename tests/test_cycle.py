@@ -96,42 +96,26 @@ class AuJumeau(unittest.TestCase):
         self.assertIn("E:La taxe est incorrecte!", sortie)
 
 
-class AvoirNimTc(FauxMCF):
-    """Jumeau d'essai : C0 d'avoir lu, RN accepté à la 2e forme (hypothèse, pour éprouver le client)."""
-
-    def fis(self, cmd, data):
-        if cmd == 0xC0 and data.startswith(b"1,Essai,{IFU},FA,COR,"):
-            champs = data.split(b",")
-            if champs[5] != b"{NIM-ACNT}-4":
-                return b"E:Erreur de format RN! " + champs[5]
-            return super().fis(cmd, b"1,Essai,{IFU},FV,TTC,ISF-ESSAI," + champs[8] + b",A")
-        return super().fis(cmd, data)
-
-
 class Avoir(unittest.TestCase):
-    def test_formes_de_rn(self):
+    def test_forme_prouvee(self):
         e = etapes("avoir", "AVOIR-0001", ("ESSAI-0009", "2", "4"))
-        self.assertEqual([c0.split(",")[5] for _, c0 in e[0][2]], ["{NIM}-4", "{NIM-ACNT}-4", "2/4 FV", "{NIM}-2"])
+        self.assertEqual(e[0][2], [("rn-nim-acnt-tc", "1,Essai,{IFU},FA,COR,{NIM-ACNT}-4,TTC,ISF-ESSAI,AVOIR-0001,A")])
 
-    def test_au_jumeau_la_premiere_forme_est_inconnue(self):
+    def test_au_jumeau_l_avoir_d_une_facture_certifiee(self):
         mcf = FauxMCF(variante="FIS")
-        code, sortie = lancer("--scenario", "avoir", "--fn", "AVOIR-0001", "--jumeau", mcf=mcf)
-        self.assertEqual(code, 1)
-        self.assertIn("ouverture rn-nim-tc C0 '1,Essai,{IFU},FA,COR,{NIM}-4,TTC,ISF-ESSAI,AVOIR-0001,A' -> E:??", sortie)
-        self.assertFalse(mcf.ouverte)
-
-    def test_forme_suivante_tant_que_rn_est_refuse_et_valeur_masquee(self):
-        code, sortie = lancer("--scenario", "avoir", "--fn", "AVOIR-0001", "--jumeau", mcf=AvoirNimTc(variante="FIS"))
+        self.assertEqual(lancer("--scenario", "deux", "--fn", "ESSAI-0009", "--jumeau", mcf=mcf)[0], 0)
+        code, sortie = lancer("--scenario", "avoir", "--fn", "AVOIR-0001", "--origine", "ESSAI-0009,1,3", "--jumeau",
+                              mcf=mcf)
         self.assertEqual(code, 0)
-        self.assertIn("ouverture rn-nim-tc C0 '1,Essai,{IFU},FA,COR,{NIM}-4,TTC,ISF-ESSAI,AVOIR-0001,A' -> "
-                      "E:Erreur de format RN! (valeur renvoyée masquée)", sortie)
-        self.assertIn("ouverture rn-nim-acnt-tc C0 '1,Essai,{IFU},FA,COR,{NIM-ACNT}-4,TTC,ISF-ESSAI,AVOIR-0001,A' -> 1,3,", sortie)
+        self.assertIn("ouverture rn-nim-acnt-tc C0 '1,Essai,{IFU},FA,COR,{NIM-ACNT}-3,TTC,ISF-ESSAI,AVOIR-0001,A' -> 1,4,", sortie)
         self.assertIn("paiement 35 'E214.20' -> R0", sortie)
-        self.assertIn("normalisation 38 '214.20' -> accepté", sortie)
+        self.assertIn("normalisation 38 '214.20' -> accepté : 8 champs, compteurs 1/4 FA", sortie)
 
-    def test_liste_montre_les_quatre_formes(self):
-        code, sortie = lancer("--scenario", "avoir", "--fn", "AVOIR-0001", "--liste")
-        self.assertEqual(sortie.count("(forme "), 4)
+    def test_au_jumeau_rn_d_une_facture_inconnue_refusee_et_masquee(self):
+        code, sortie = lancer("--scenario", "avoir", "--fn", "AVOIR-0001", "--origine", "ESSAI-0009,2,4", "--jumeau")
+        self.assertEqual(code, 1)
+        self.assertIn("-> E:Erreur de format RN! (valeur renvoyée masquée)", sortie)
+        self.assertIn("ARRÊT : aucune forme acceptée, rien d'ouvert.", sortie)
 
 
 class Garde(unittest.TestCase):
