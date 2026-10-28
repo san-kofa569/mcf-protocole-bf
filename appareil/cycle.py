@@ -15,9 +15,16 @@ Scénarios :
               plusieurs lignes, PSVB sur un service, mode M, paiement partiel ;
   annulation  un bien payé, puis 38 `C` : `E:ANNULEE`, facture non comptée (prouvé le 2026-10-28, 14:56).
               Sans 35, le 38 `C` répond « La commande 35 doit être soumise en premier. » : avant paiement, C1 annule.
+  avoir       avoir de correction (FA, nature COR) d'une facture « deux » : sa forme de C0 est inconnue ; chaque
+              forme est essayée (C3 puis C0), la suivante tant que l'appareil répond le message de format. La
+              signature d'origine vient de MCF_SIG (`export MCF_SIG=$(python3 -m appareil.signature …)`).
+
+Sur l'appareil, chaque réponse est écrite brute dans `--capture` (appareil/brut/, hors dépôt) : c'est là que se
+lisent NIM, IFU et signature, jamais à l'écran.
 
 Usage :
   python3 -m appareil.cycle --scenario simple --fn ESSAI-0009 --liste
+  python3 -m appareil.cycle --scenario avoir --fn AVOIR-0001 --port /dev/ttyACM0 --seq 60
   python3 -m appareil.cycle --scenario simple --fn ESSAI-0009 --jumeau
   python3 -m appareil.cycle --scenario deux --fn ESSAI-0009 --port /dev/ttyACM0 --seq 20
 
@@ -31,12 +38,21 @@ import sys
 import time
 
 from appareil.recherche_bornee import pousser, suivant
-from appareil.trame import bcc_ok, paquet, remplir
+from appareil.trame import bcc_ok, paquet, remplir, trame
 
 DELAI = 3.0
 CLIENT = "PP,CLIENT TEST,,,70123456,client@example.com,"
 BIEN = "ARTICLE TEST\tLOCBIE,B18.0%100.00\t100.00*1"
 SERVICE = "POSE TEST\tLOCSER,C10.0%110.00\t110.00*1"
+FORMAT = "E:Erreur de format des données ou incompatibilité"
+# Forme du C0 d'avoir, inconnue : FA à 7 champs répond le message de format (15 octobre). La nature (📜 annexe SFE :
+# COR, RAN, RAM, RRR) et la signature d'origine (📖 RDC : `type,nature,référence` à la place du type), à plusieurs places.
+AVOIRS = (
+    ("rdc+psvb", "1,Essai,{IFU},FA,COR,{SIG},TTC,ISF-ESSAI,%s,A"),
+    ("rdc", "1,Essai,{IFU},FA,COR,{SIG},TTC,ISF-ESSAI,%s"),
+    ("fin", "1,Essai,{IFU},FA,TTC,ISF-ESSAI,%s,A,COR,{SIG}"),
+    ("signature", "1,Essai,{IFU},FA,{SIG},TTC,ISF-ESSAI,%s,A"),
+)
 
 NOMBRE = r"-?\d+(?:\.\d+)?"
 FORMES = {
@@ -65,6 +81,11 @@ def etapes(scenario, fn):
                         ("mobile", 0x35, "M100.00"),
                         ("reste", 0x35, lambda e: "E" + montant(e["du"])),
                         ("normalisation", 0x38, lambda e: montant(e["total"]))]
+    if scenario == "avoir":
+        return [("ouverture", 0xC0, [(v, f % fn) for v, f in AVOIRS]),
+                ("bien", 0x31, BIEN), ("service", 0x31, SERVICE), ("sous-total", 0x33, ""),
+                ("paiement", 0x35, lambda e: "E" + montant(e["total"])),
+                ("normalisation", 0x38, lambda e: montant(e["total"]))]
     if scenario == "annulation":
         return debut + [("article", 0x31, BIEN), ("sous-total", 0x33, ""),
                         ("paiement", 0x35, lambda e: "E" + montant(e["total"])),
@@ -92,8 +113,48 @@ def montrer(cmd, donnees):
     """Ce qui s'affiche d'une réponse : la clôture réduite à ses compteurs."""
     if cmd == 0x38 and re.fullmatch(FORMES[0x38], donnees):
         f = donnees.split(",")
-        return "accepté : 8 champs, compteurs %s/%s %s (NIM, IFU, signature dans la capture)" % (f[0], f[1], f[2])
+        return "accepté : 8 champs, compteurs %s/%s %s (NIM, IFU, signature dans --capture)" % (f[0], f[1], f[2])
     return donnees
+
+
+def ouvrir(nom, cmd, formes, envoyer, delai, tracer):
+    """C3 puis C0, forme après forme, tant que le C0 répond le message de format. Vrai si une facture s'ouvre."""
+    for j, (variante, c0) in enumerate(formes):
+        if j and delai:
+            time.sleep(delai)
+        r, motif = lire(envoyer(0xC3, CLIENT))
+        if r != "R":
+            tracer("client C3 %r : ARRÊT, %s" % (CLIENT, motif or r))
+            return False
+        if delai:
+            time.sleep(delai)
+        r, motif = lire(envoyer(cmd, c0))
+        if r is None:
+            tracer("%s %s %02X %r : ARRÊT, %s" % (nom, variante, cmd, c0, motif))
+            return False
+        tracer("%s %s %02X %r -> %s" % (nom, variante, cmd, c0, r))
+        if r == FORMAT:
+            continue
+        if re.fullmatch(FORMES[cmd], r):
+            return True
+        tracer("ARRÊT : réponse inattendue (rien d'ouvert, ou un C1 l'annule).")
+        return False
+    tracer("ARRÊT : aucune forme acceptée, rien d'ouvert.")
+    return False
+
+
+def capturer(chemin):
+    """Écrit chaque échange brut, au format de trame.py, dans `chemin` (appareil/brut/, hors dépôt)."""
+    def noter(seq, cmd, d, recu):
+        os.makedirs(os.path.dirname(chemin) or ".", exist_ok=True)
+        with open(chemin, "a", encoding="utf-8") as f:
+            f.write("%s envoi : %s\n" % (time.strftime("%Y-%m-%d %H:%M:%S"),
+                                         trame(seq, cmd, remplir(d, os.environ).encode("latin-1")).hex(" ")))
+            p = paquet(recu or b"")
+            f.write("reçu (%d octets) : %s\n" % (len(recu or b""), (recu or b"").hex(" ")))
+            if p:
+                f.write("données : %s\nstatut : %s\n" % (p[0].decode("utf-8", "replace"), p[1].hex(" ")))
+    return noter
 
 
 def jouer(scenario, fn, envoyer, delai=0.0, tracer=print):
@@ -102,6 +163,10 @@ def jouer(scenario, fn, envoyer, delai=0.0, tracer=print):
     for i, (nom, cmd, donnees) in enumerate(etapes(scenario, fn)):
         if i and delai:
             time.sleep(delai)
+        if isinstance(donnees, list):
+            if not ouvrir(nom, cmd, donnees, envoyer, delai, tracer):
+                return 1
+            continue
         d = donnees(etat) if callable(donnees) else donnees
         if cmd == 0x35 and not (re.fullmatch(r"[A-Z]\d+\.\d{2}", d) and float(d[1:]) > 0):
             tracer("%s %02X %r : ARRÊT avant envoi, paiement nul ou négatif." % (nom, cmd, d))
@@ -130,12 +195,14 @@ def jouer(scenario, fn, envoyer, delai=0.0, tracer=print):
 
 def main(argv=None, mcf=None):
     a = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    a.add_argument("--scenario", choices=("simple", "deux", "annulation"), required=True)
+    a.add_argument("--scenario", choices=("simple", "deux", "annulation", "avoir"), required=True)
     a.add_argument("--fn", required=True, help="référence de la facture, jamais réutilisée (ESSAI-0009…)")
     a.add_argument("--liste", action="store_true", help="afficher les trames, ne rien envoyer")
     a.add_argument("--jumeau", action="store_true", help="jouer contre le jumeau FIS")
     a.add_argument("--port", help="port série de l'appareil")
     a.add_argument("--seq", default="20", help="séquence hexadécimale de départ (défaut 20)")
+    a.add_argument("--capture", default=os.path.join("appareil", "brut", time.strftime("%Y-%m-%d") + "_cycle.txt"),
+                   help="fichier des réponses brutes, sur l'appareil (défaut appareil/brut/AAAA-MM-JJ_cycle.txt)")
     o = a.parse_args(argv)
     try:
         depart = int(o.seq, 16)
@@ -147,6 +214,10 @@ def main(argv=None, mcf=None):
         return 2
     if o.liste or not (o.jumeau or o.port):
         for nom, cmd, d in etapes(o.scenario, o.fn):
+            if isinstance(d, list):
+                for variante, c0 in d:
+                    print("%-13s %02X %r  (forme %s, après un C3)" % (nom, cmd, c0, variante))
+                continue
             print("%-13s %02X %s" % (nom, cmd, "(selon la réponse précédente)" if callable(d) else repr(d)))
         print("Rien envoyé.")
         return 0
@@ -165,9 +236,14 @@ def main(argv=None, mcf=None):
         if remplir("{IFU}", os.environ) is None:  # avant le C3 : sinon il partirait seul
             print("MCF_IFU absent ou invalide (9 caractères) : rien envoyé.")
             return 2
+        if o.scenario == "avoir" and remplir("{SIG}", os.environ) is None:
+            print("MCF_SIG absent ou invalide (24 caractères A–Z, 0–9) : rien envoyé.")
+            return 2
+        noter = capturer(o.capture)
 
         def envoyer(cmd, d):
             r = pousser(o.port, seq[0], d, cmd=cmd)
+            noter(seq[0], cmd, d, r)
             seq[0] = suivant(seq[0])
             return r
         delai = DELAI

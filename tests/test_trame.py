@@ -48,6 +48,15 @@ class Remplir(unittest.TestCase):
     def test_ifu_remplace(self):
         self.assertEqual(remplir("1,Essai,{IFU},FV", {"MCF_IFU": "IFU00000X"}), "1,Essai,IFU00000X,FV")
 
+    def test_signature_remplacee(self):
+        env = {"MCF_IFU": "IFU00000X", "MCF_SIG": "ABCDEFGHIJKLMNOPQRSTUV23"}
+        self.assertEqual(remplir("{IFU},FA,COR,{SIG}", env), "IFU00000X,FA,COR,ABCDEFGHIJKLMNOPQRSTUV23")
+
+    def test_signature_absente_ou_invalide_refusee(self):
+        for sig in (None, "", "ABCDEFGHIJKLMNOPQRSTUV2", "abcdefghijklmnopqrstuv23", "ABCDEFGHIJKLMNOPQRSTUV2…"):
+            env = {} if sig is None else {"MCF_SIG": sig}
+            self.assertIsNone(remplir("FA,COR,{SIG}", env), sig)
+
     def test_ifu_absent_refuse(self):
         self.assertIsNone(remplir("1,Essai,{IFU},FV", {}))
 

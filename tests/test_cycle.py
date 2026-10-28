@@ -1,11 +1,13 @@
 import io
 import os
+import tempfile
 import unittest
 from contextlib import redirect_stdout
 from unittest import mock
 
-from appareil.cycle import BIEN, CLIENT, SERVICE, etapes, main
-from simulateur.faux_mcf import FauxMCF
+from appareil.cycle import BIEN, CLIENT, FORMAT, SERVICE, etapes, main
+from appareil.signature import signature
+from simulateur.faux_mcf import E_FORMAT, FauxMCF
 
 
 def lancer(*argv, mcf=None):
@@ -94,7 +96,64 @@ class AuJumeau(unittest.TestCase):
         self.assertIn("E:La taxe est incorrecte!", sortie)
 
 
+class AvoirEnRdc(FauxMCF):
+    """Jumeau d'essai où l'avoir s'ouvrirait à la 2e forme (9 champs) : hypothèse, pour éprouver le client."""
+
+    def fis(self, cmd, data):
+        if cmd == 0xC0 and data.startswith(b"1,Essai,{IFU},FA,"):
+            champs = data.split(b",")
+            if len(champs) != 9:
+                return E_FORMAT
+            return super().fis(cmd, b"1,Essai,{IFU},FV,TTC,ISF-ESSAI," + champs[8] + b",A")
+        return super().fis(cmd, data)
+
+
+class Avoir(unittest.TestCase):
+    def test_au_jumeau_la_premiere_forme_est_inconnue(self):
+        mcf = FauxMCF(variante="FIS")
+        code, sortie = lancer("--scenario", "avoir", "--fn", "AVOIR-0001", "--jumeau", mcf=mcf)
+        self.assertEqual(code, 1)
+        self.assertIn("ouverture rdc+psvb C0 '1,Essai,{IFU},FA,COR,{SIG},TTC,ISF-ESSAI,AVOIR-0001,A' -> E:??", sortie)
+        self.assertFalse(mcf.ouverte)
+
+    def test_forme_suivante_tant_que_le_message_est_celui_de_format(self):
+        code, sortie = lancer("--scenario", "avoir", "--fn", "AVOIR-0001", "--jumeau", mcf=AvoirEnRdc(variante="FIS"))
+        self.assertEqual(code, 0)
+        self.assertIn("ouverture rdc+psvb C0 '1,Essai,{IFU},FA,COR,{SIG},TTC,ISF-ESSAI,AVOIR-0001,A' -> " + FORMAT, sortie)
+        self.assertIn("ouverture rdc C0 '1,Essai,{IFU},FA,COR,{SIG},TTC,ISF-ESSAI,AVOIR-0001' -> 1,3,CLIENT TEST", sortie)
+        self.assertIn("paiement 35 'E214.20' -> R0", sortie)
+        self.assertIn("normalisation 38 '214.20' -> accepté", sortie)
+
+    def test_liste_montre_les_quatre_formes(self):
+        code, sortie = lancer("--scenario", "avoir", "--fn", "AVOIR-0001", "--liste")
+        self.assertEqual(sortie.count("(forme "), 4)
+
+
 class Garde(unittest.TestCase):
+    def test_avoir_sans_mcf_sig_rien_ne_part(self):
+        with mock.patch.dict(os.environ, {"MCF_IFU": "99999999Z"}, clear=True), \
+                mock.patch("appareil.cycle.pousser") as p:
+            code, sortie = lancer("--scenario", "avoir", "--fn", "AVOIR-0001", "--port", "/dev/null")
+        self.assertEqual(code, 2)
+        self.assertIn("MCF_SIG absent", sortie)
+        p.assert_not_called()
+
+    def test_sur_l_appareil_la_capture_est_brute_et_relisible(self):
+        mcf = FauxMCF(variante="FIS")
+        with tempfile.TemporaryDirectory() as dossier:
+            capture = os.path.join(dossier, "brut", "cycle.txt")
+            with mock.patch.dict(os.environ, {"MCF_IFU": "99999999Z"}, clear=True), \
+                    mock.patch("appareil.cycle.pousser", lambda port, seq, d, cmd: mcf.repondre(seq, cmd, d.encode())), \
+                    mock.patch("appareil.cycle.DELAI", 0):
+                code, sortie = lancer("--scenario", "simple", "--fn", "ESSAI-0009", "--port", "/dev/null",
+                                      "--capture", capture)
+            self.assertEqual(code, 0)
+            lignes = open(capture, encoding="utf-8").read().splitlines()
+        self.assertEqual(sum(l.startswith("données : ") for l in lignes), 6)
+        self.assertNotIn("99999999Z", sortie)  # l'écran reste masqué…
+        self.assertTrue(any("99999999Z" in l for l in lignes))  # …la capture garde la réponse du 38
+        self.assertIsNotNone(signature(lignes, "1"))
+
     def test_liste_n_envoie_rien(self):
         code, sortie = lancer("--scenario", "deux", "--fn", "ESSAI-0009", "--liste")
         self.assertEqual(code, 0)

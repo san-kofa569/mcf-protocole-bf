@@ -3,8 +3,10 @@
 Usage : python3 trame.py <port> <seq hex> <cmd hex> [données] [--simulation]
 Un {IFU} dans les données est remplacé par la variable d'environnement MCF_IFU ;
 sans elle, ou si elle ne fait pas 9 caractères alphanumériques, rien n'est envoyé (la simulation, elle, affiche la trame telle quelle).
+Un {SIG} (signature d'une facture d'origine, pour un avoir) est remplacé par MCF_SIG : 24 caractères A–Z, 0–9.
 """
 import os
+import re
 import sys
 import time
 
@@ -39,6 +41,11 @@ def remplir(texte, env=os.environ):
         if len(ifu) != 9 or not (ifu.isascii() and ifu.isalnum()):
             return None
         texte = texte.replace("{IFU}", env["MCF_IFU"])
+    if "{SIG}" in texte:
+        sig = env.get("MCF_SIG", "")
+        if not re.fullmatch(r"[A-Z0-9]{24}", sig):
+            return None
+        texte = texte.replace("{SIG}", sig)
     return texte
 
 
@@ -49,7 +56,7 @@ def main(argv):
     texte = args[0] if args else ""
     rempli = remplir(texte)
     if rempli is None and not simulation:
-        print("{IFU} présent mais MCF_IFU absent ou invalide (9 caractères) : rien envoyé."); return 2
+        print("{IFU} ou {SIG} présent mais MCF_IFU (9 caractères) ou MCF_SIG (24) absent ou invalide : rien envoyé."); return 2
     data = (texte if rempli is None else rempli).encode("latin-1")
     t = trame(seq, cmd, data)
     print(time.strftime("%Y-%m-%d %H:%M:%S"), "envoi :", t.hex(" "))

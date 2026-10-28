@@ -197,6 +197,9 @@ class JumeauFisNano(unittest.TestCase):
         self.assertEqual(r[0], 0x01)
 
 
+E_FORMAT_ATTENDU = "E:Erreur de format des données ou incompatibilité".encode()
+
+
 class CycleFisNano(unittest.TestCase):
     """Le cycle accepté le 2026-10-28 (ESSAI-0008), réponse par réponse, puis ce qui n'a jamais été vu."""
 
@@ -271,6 +274,10 @@ class CycleFisNano(unittest.TestCase):
         self.assertEqual(self.mcf.donnees(0x35, b"M100.00"), b"R-114.2")
         self.assertEqual(self.mcf.donnees(0x35, b"E-114.20"), b"R-228.4")
         self.assertEqual(self.mcf.donnees(0x38, b"214.20").split(b",")[:3], [b"2", b"4", b"FV"])
+
+    def test_avoir_a_sept_champs_format_autres_inconnues(self):
+        self.assertEqual(self.mcf.donnees(0xC0, b"1,Essai,{IFU},FA,TTC,ISF-ESSAI,AV-1"), E_FORMAT_ATTENDU)
+        self.assertEqual(self.mcf.donnees(0xC0, b"1,Essai,{IFU},FA,COR,{SIG},TTC,ISF-ESSAI,AV-1,A"), INCONNU)
 
     def test_38_c_apres_le_35_annule_sans_compter(self):
         # 2026-10-28 14:56 : ESSAI-0010 payée puis annulée ; C1 suivant : compteurs inchangés, statut normal
