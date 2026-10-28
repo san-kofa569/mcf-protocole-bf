@@ -23,7 +23,7 @@ Scénarios :
               (`B18.0%118.00⇥100.00*1` → `118.0,100.0,18.0,0.0`, 2026-10-28 15:46) ; 33 en HT jamais vu ;
   credit      un bien vendu à crédit : 35 en mode `A` pour le total (`A102.00` → `R0`, ESSAI-0012 certifiée) ;
   modes       PSVB `D` (taux 0), un bien et un service `IMPSER` dont la désignation porte une virgule échappée
-              (`^x2c;`, 📖 RDC), payés en trois modes `V`, `C`, `D` (📖) ;
+              (`^x2c;`), payés en trois modes `V`, `C`, `D` : ESSAI-0014 certifiée le 2026-10-28 (16:07) ;
   avoir       avoir de correction (FA, nature COR) d'une facture « deux » : C0 `op,nom,IFU,FA,COR,RN,TTC,ISF,FN,PSVB`
               avec RN = `{NIM-ACNT}-{TC d'origine}` (AVOIR-0001 certifié le 2026-10-28 15:13), puis les lignes, 33,
               35 et 38 comme une vente. MCF_NIM vient de `python3 -m appareil.signature … --nim` ; --origine donne

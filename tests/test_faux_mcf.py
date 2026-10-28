@@ -111,6 +111,9 @@ class JumeauFisNano(unittest.TestCase):
         f = "E:Erreur de format des données ou incompatibilité".encode()
         self.assertEqual(self.mcf.donnees(0x31, b"ARTICLE TEST\tLOCBIE,B100.00\t100.00"), f)
         self.assertEqual(self.mcf.donnees(0x31, b"ARTICLE TEST\tLOCBIE,B18.00%100.00\t100.00;0.00"), f)
+        # IMPSER passe le contrôle du type (ESSAI-0014) : sans PSVB au C0, il bute sur la taxe comme les autres
+        self.assertEqual(self.mcf.donnees(0x31, b"POSE^x2c; TEST\tIMPSER,C10.0%110.00\t110.00*1"),
+                         "E:La taxe est incorrecte!".encode())
         for ty in (b"BIE", b"IMPSERV"):
             self.assertEqual(self.mcf.donnees(0x31, b"ARTICLE TEST\t" + ty + b",B18.00%100.00\t100.00"),
                              "E:Le type de produit n'existe pas".encode())
@@ -255,7 +258,7 @@ class CycleFisNano(unittest.TestCase):
         self.assertEqual(self.mcf.donnees(0x31, b"ARTICLE TEST\tLOCBIE,B10.0%100.00\t100.00*1"), INCONNU)  # taux faux
         self.assertEqual(self.mcf.donnees(0x31, b"ARTICLE TEST\tLOCBIE,B18.0%90.00\t100.00*1"), INCONNU)  # montant faux
         self.mcf.donnees(0x31, self.ARTICLE)
-        self.assertEqual(self.mcf.donnees(0x35, b"V102.00"), INCONNU)  # virement : jamais essayé
+        self.assertEqual(self.mcf.donnees(0x35, b"Z102.00"), INCONNU)  # lettre de mode jamais essayée
         self.assertEqual(self.mcf.donnees(0x35, b"E150.00"), INCONNU)  # excédent : jamais vu
         self.assertEqual(self.mcf.donnees(0x38, b"99.00"), INCONNU)  # MV faux
 

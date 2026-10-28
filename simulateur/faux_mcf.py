@@ -67,10 +67,10 @@ C3_OBSERVE = {
 # ne compte pas comme article (33 répond toujours « ajouter le produit en premier »).
 AUCUNE_DONNEE = "E:Aucune donnée valide n'a été reçue".encode()
 E_TAXE = "E:La taxe est incorrecte!".encode()
-# Types d'article de la note 2025-0889 (annexe). 2026-10-28 : LOCBIE, LOCSER, IMPBIE passent ; le code IMPSERV
-# n'existe pas pour l'appareil, qui écrit peut-être IMPSER comme la mention imprimée (jamais essayé : INCONNU)
-TYPES_ARTICLE = (b"LOCBIE", b"LOCSER", b"IMPBIE")
-TYPES_NON_ESSAYES = (b"IMPSER",)
+# Types d'article de la note 2025-0889 (annexe), tels que l'appareil les accepte (2026-10-28) : le service importé
+# s'écrit IMPSER, comme la mention imprimée ; le code IMPSERV de l'annexe répond « Le type de produit n'existe pas »
+TYPES_ARTICLE = (b"LOCBIE", b"LOCSER", b"IMPBIE", b"IMPSER")
+TYPES_NON_ESSAYES = ()
 C0_EN_PREMIER = "E:La commande C0 doit être soumise en premier".encode()
 
 
@@ -264,7 +264,7 @@ class FauxMCF:
             total, ttc, tva, psvb = self.montants()
             return ",".join(nombre(v) for v in [total] + ttc + tva + [psvb, 0.0]).encode()
         if cmd == 0x35 and self.ouverte and self.articles:
-            m = re.fullmatch(rb"[EMA](-?[0-9.]+)", data)  # espèces, mobile money, A (crédit) essayés ; un négatif passe
+            m = re.fullmatch(rb"[EMAVCD](-?[0-9.]+)", data)  # E, M, A (crédit), V, C, D essayés ; un négatif passe
             if not m:
                 return INCONNU
             self.paye += float(m.group(1)); self.paiements += 1

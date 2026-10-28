@@ -118,10 +118,11 @@ Ordre des contrôles, du premier au dernier (✅ 2026-10-28, environ 110 trames)
 | Contrôle | Message |
 |---|---|
 | structure : 3 champs à tabulation ; `%` dans le 2e ; prix `…` ou `…;T…` | `E:Erreur de format des données ou incompatibilité` (`LOCBIE,B100.00` sans `%` ; prix `100.00;0.00`) |
-| type d'article | `E:Le type de produit n'existe pas` : `BIE`, `IMPSERV`. Passent : `LOCBIE`, `LOCSER`, `IMPBIE` (🔍 `IMPSER`, mention de l'annexe) |
+| type d'article | `E:Le type de produit n'existe pas` : `BIE`, `IMPSERV`. Passent : `LOCBIE`, `LOCSER`, `IMPBIE`, **`IMPSER`** (service importé : la mention de l'annexe, pas son code) |
 | taxe | `E:La taxe est incorrecte!` pour **toute** écriture tant que le C0 n'a pas de PSVB (16 groupes, `G%taux`, taxe nulle, avec ou sans quantité) |
 
 - ✅ Sans C0 : `E:La commande C0 doit être soumise en premier`. Donnée vide : `E:Aucune donnée valide n'a été reçue`.
+- ✅ Une virgule dans la désignation s'écrit `^x2c;` (`POSE^x2c; TEST`, accepté, ESSAI-0014).
 - ✅ Tolérés à la structure (dans la facture sans PSVB, donc jugés « taxe ») : sans `*qté`, `;T0,0` après la quantité, un sous-champ de plus.
 - ❓ Avec PSVB, une seule forme a été envoyée : on ignore ce que donnent les autres écritures du taux et du montant.
 - Les plus de 500 formes refusées du 9 au 15 octobre manquaient toutes le type devant la virgule.
@@ -141,13 +142,13 @@ le chemin du message ; à vérifier par un 33 sur une facture neuve sans 36).
 Sans donnée. Réponse à 35 champs : total à payer, 16 montants TTC des groupes A–P, 16 TVA des groupes A–P, **PSVB**, 🔍 taxe
 spécifique. Pour l'article ci-dessus : `102.0` = 100 TTC + 2.0 de PSVB (catégorie A, 2 % du TTC, 📜 SFE §6.10) ; B `100.0` ; TVA B
 `15.25`. ✅ Le PSVB porte sur **toutes** les lignes, services compris : bien B 100 + service `LOCSER` C 110 → TVA C `10.0`,
-PSVB `4.2`, total `214.2`. Sans article : `E:Veuillez ajouter le produit en premier` (avec point final après une 36).
+PSVB `4.2`, total `214.2`. ✅ PSVB `D` au C0 : taux 0, PSVB `0.0` au 33 (ESSAI-0014) : la valeur d'une pièce sans PSVB. Sans article : `E:Veuillez ajouter le produit en premier` (avec point final après une 36).
 
 ### 35, paiement : ✅ 2026-10-28
 
 `{mode}{montant}` : `E102.00` → `R0`. **Le reste dû s'écrit en négatif** : `M100.00` sur 214.2 → `R-114.2`.
-Modes essayés : `E` espèces, `M` mobile money, **`A` pour une vente à crédit** (`A102.00` → `R0`, ESSAI-0012 certifiée)
-(✅ 2026-10-28). 📖 Autres (RDC, Bénin) : `V` virement, `C` carte, `D` chèque. Sans article, vide : `E:Le montant payé est suffisant`.
+✅ Modes (2026-10-28) : `E` espèces, `M` mobile money, `V` virement, `C` carte, `D` chèque, **`A` pour une vente à crédit**
+(`A102.00` → `R0`, ESSAI-0012). Paiement en trois fois : `V70.00` → `R-140.0`, `C70.00` → `R-70.0`, `D70.00` → `R0` (ESSAI-0014). Sans article, vide : `E:Le montant payé est suffisant`.
 
 ⚠ ✅ **L'appareil ne contrôle pas les paiements** : un montant négatif passe (`E-114.20` → `R-228.4`), et le 38 certifie une
 facture non soldée (ESSAI-0009, 2026-10-28 14:45, par une erreur du client d'essai). Le logiciel de facturation doit
@@ -169,7 +170,8 @@ Réponse à 8 champs : compteur de factures de vente, compteur total, type (`FV`
 Mentions à imprimer (📜 note 0887 §2.10.3–2.10.4), tirées de cette réponse : **code SECeF** = la signature ;
 **identificateur de machine** `(NIM)-(ACNT)` = le 5e champ tel quel (`{NIM}-1` : ACNT = compteur d'activation) ;
 **compteurs** `(CPIT)/(FDOC) (ITL)` = champs 1, 2 et 3 (`1/3 FV` : 1re facture de vente, 3 transactions) ;
-**date et heure du MCF** = le 4e champ ; **code QR** « au format défini par l'Administration » : ❓ non publié.
+**date et heure du MCF** = le 4e champ ; **code QR** « au format défini par l'Administration » : ❓ non publié, et le reçu
+de l'application fiscale n'en montre pas (2026-10-28) : le logiciel de facturation le construit, format à obtenir.
 ✅ En mode Test, la signature commence par `TESTFACT` (3 signatures sur 3), suivie de 16 caractères propres à la facture.
 ✅ C1 garde la dernière facture certifiée : date (7e champ), type (8e), signature (9e), **nombre total de factures**
 (10e : ventes et avoirs, 4 après FV n°3 et FA n°1), montant (11e). Compteurs (4e à 6e) : transactions, ventes, avoirs.

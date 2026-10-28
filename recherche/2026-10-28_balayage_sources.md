@@ -228,3 +228,7 @@ Captures : `appareil/brut/2026-10-28_seance.txt` (hors dépôt).
   33 → `120.36,…,118.0,…,18.0,…,2.36,0.0` (montants TTC), 35 `E120.36` → `R0`, 38 → **`4/7 FV`**.
 - 16:03:41 : C3 du scénario `modes`, 7 s après ce 38 → NAK `a2`. Règle : après un 38 accepté, C3 refusé jusqu'à un C1.
   `cycle.py` commence désormais chaque facture par un C1 et réessaie un NAK `a2` au C3.
+- 16:07:09–38 : scénario `modes`, ESSAI-0014 : C1 de départ (compteurs 7,4,1), C3 `R`, C0 PSVB `D` `5,8,…`, 31 bien B,
+  31 `POSE^x2c; TEST⇥IMPSER,C10.0%110.00⇥110.00*1` → `110.0,100.0,10.0,0.0`, 33 → `210.0,…,0.0,0.0` (PSVB 0),
+  35 `V70.00` → `R-140.0`, `C70.00` → `R-70.0`, `D70.00` → `R0`, 38 → **`5/8 FV`**.
+- Le reçu d'ESSAI-0008 ouvert sur l'appareil ne montre **pas de QR** : à construire par le logiciel, format à obtenir.

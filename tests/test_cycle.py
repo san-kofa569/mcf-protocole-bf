@@ -172,12 +172,13 @@ class EssaisRestants(unittest.TestCase):
         self.assertIn("client C3 : NAK a2, nouvel essai", sortie)
         self.assertEqual(vus[:3], [0xC1, 0xC3, 0xC3])
 
-    def test_au_jumeau_chacun_s_arrete_au_jamais_vu(self):
-        for scenario, arret in (("modes", "service 31"),):
-            code, sortie = lancer("--scenario", scenario, "--fn", "X", "--jumeau")
-            self.assertEqual(code, 1, scenario)
-            ligne = next(l for l in sortie.splitlines() if "E:??" in l)
-            self.assertIn(arret, ligne, scenario)
+    def test_modes_comme_essai_0014(self):
+        code, sortie = lancer("--scenario", "modes", "--fn", "ESSAI-0014", "--jumeau")
+        self.assertEqual(code, 0)
+        self.assertIn("sous-total 33 '' -> 210.0,0.0,100.0,110.0,", sortie)
+        self.assertIn(",15.25,10.0,", sortie)
+        for attendu in ("virement 35 'V70.00' -> R-140.0", "carte 35 'C70.00' -> R-70.0", "cheque 35 'D70.00' -> R0"):
+            self.assertIn(attendu, sortie)
 
 
 class Garde(unittest.TestCase):
