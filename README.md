@@ -46,7 +46,7 @@ sequenceDiagram
 | **C0** ouverture | `1,Essai,{IFU},FV,TTC,ISF-ESSAI,ESSAI-0008,A` — le **PSVB** (8e champ) est obligatoire | `1,3,` + client |
 | **31** article | `ARTICLE TEST⇥LOCBIE,B18.0%100.00⇥100.00*1` — type, groupe et taux, montant ; prix × quantité | `100.0,84.75,15.25,0.0` |
 | **33** sous-total | aucune | 35 champs : total `102.0`, 16 montants, 16 TVA, PSVB `2.0`, … |
-| **35** paiement | `E102.00` — mode (`E` espèces, `M` mobile money) et montant | `R0` ; reste dû en négatif : `R-114.2` |
+| **35** paiement | `E102.00` — mode (`E`, `M`, `V`, `C`, `D` ; `A` à crédit) et montant | `R0` ; reste dû en négatif : `R-114.2` |
 | **38** normalisation | `102.00` — le total du 33, **seul** | 8 champs : compteurs, `FV`, date, NIM, IFU, signature (24 car.), référence |
 | **38** annulation | `C`, après le 35 | `E:ANNULEE` — la facture n'est pas comptée |
 | **C0** avoir | `1,Essai,{IFU},FA,COR,{NIM}-1-4,TTC,ISF-ESSAI,AVOIR-0001,A` — référence = identifiant de l'appareil et compteur total de la facture d'origine | `1,5,` + client, puis le cycle d'une vente |
@@ -79,13 +79,14 @@ python3 appareil/trame.py /dev/ttyACM0 27 C0 "$(cat appareil/essais/sondes/c0_fa
 
 ## Ce qui reste ouvert
 
-Prouvés depuis la première facture : plusieurs lignes et groupes, PSVB sur toutes les lignes, mobile money et paiement
-en deux fois, annulation (`38 C`), avoir de correction. Restent :
+Prouvés depuis la première facture : plusieurs lignes et groupes, PSVB sur toutes les lignes (`D` = 0 %), mode HT
+(la ligne porte son montant TTC et le prix HT), six modes de paiement (`E`, `M`, `V`, `C`, `D`, et `A` pour une vente à
+crédit) et paiement en plusieurs fois, types `LOCBIE`, `LOCSER`, `IMPBIE`, `IMPSER`, virgule échappée `^x2c;`,
+annulation (`38 C`), avoir de correction. Restent :
 
-- **Code QR** burkinabè : « au format défini par l'Administration », non publié.
-- **Mode HT**, remises (prix d'origine et motif), taxe spécifique (`;T…`), catégories PSVB B à D.
-- Autres modes de paiement (`V`, `C`, `D`, `A` dans les protocoles voisins), autres natures d'avoir (`RAN`, `RAM`, `RRR`),
-  factures d'acompte et d'exportation (`FT`, `EV`, `ET`, `EA`).
+- **Code QR** burkinabè : « au format défini par l'Administration », non publié ; le reçu de l'appareil n'en montre pas.
+- Remises (prix d'origine et motif), taxe spécifique (`;T…`), catégories PSVB B et C.
+- Natures d'avoir `RAN`, `RAM`, `RRR` ; factures d'acompte et d'exportation (`FT`, `EV`, `ET`, `EA`).
 
 > ⚠ L'appareil **ne contrôle pas les paiements** : il accepte un montant négatif et certifie une facture non soldée.
 > Le logiciel de facturation doit refuser lui-même tout paiement nul ou négatif, et ne lancer le 38 qu'après un `R0`
