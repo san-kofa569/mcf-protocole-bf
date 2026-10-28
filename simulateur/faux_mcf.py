@@ -1,0 +1,226 @@
+"""Faux MCF : répond aux trames d'un SFE sur un pty et journalise tout ce qu'il reçoit.
+
+Usage : python3 -m simulateur.faux_mcf --lien <chemin> --journal <fichier> [--variante NE|BF|FIS]
+Le lien pointe vers l'esclave du pty (pour Wine : $WINEPREFIX/dosdevices/com1).
+Toutes les valeurs sont fictives. NE et BF répondent de façon plausible : l'enjeu est de lire
+ce qu'envoie le SFE. FIS est le jumeau du FIS-NANO : il ne rend que ce que l'appareil a
+répondu (2026-10-09, 2026-10-12) et signale par INCONNU tout cas jamais observé.
+"""
+import argparse
+import os
+import re
+import sys
+import time
+import tty
+
+NIM, IFU = "XX99999999", "99999999Z"
+TAUX = "0.0,18.0,10.0,0.0,0.0,18.0,10.0,0.0,0.0,0.0,0.0,10.0,10.0,0.0,0.0,0.0"
+PSVB = "2.0,1.0,0.2,0.0"
+SIGNATURE = "ABCD1234EFGH5678IJKL9012"
+INCONNU = "E:?? cas jamais observé sur l'appareil".encode()
+TYPES_FACTURE = ("FV", "FT", "FA", "EV", "ET", "EA")  # note DGI 2025-0889 §2.7
+E_FORMAT = "E:Erreur de format des données ou incompatibilité".encode()
+SOCIETE = {b"I0": "SOCIETE ESSAI", b"I1": "RUE ESSAI", b"I2": "VILLE ESSAI",
+           b"I3": "00000000", b"I4": "essai@example.org"}
+
+
+def reponse(seq, cmd, data, statut=b"\x80" * 6):
+    corps = bytes([0x20 + len(data) + 11, seq, cmd]) + data + b"\x04" + statut + b"\x05"
+    s = sum(corps)
+    return b"\x01" + corps + bytes(((s >> k) & 0xF) + 0x30 for k in (12, 8, 4, 0)) + b"\x03"
+
+
+def lire_requete(fd):
+    """Une trame entière : 01, LEN, puis LEN - 0x20 + 4 octets (jusqu'à 03)."""
+    b = b""
+    while not b:
+        c = os.read(fd, 1)
+        if not c:
+            return b""
+        if c == b"\x01":
+            b = c
+    b += os.read(fd, 1)
+    reste = b[1] - 0x20 + 4
+    while reste > 0:
+        c = os.read(fd, reste)
+        if not c:
+            break
+        b += c; reste -= len(c)
+    return b
+
+
+# Réponses de C3 observées sur le FIS-NANO le 2026-10-15, charge utile exacte (pas d'état caché :
+# la même trame redonne la même réponse après un rallumage). Tout autre C3 : le message connu.
+C3_OBSERVE = {
+    b"": b"R",
+    b"99988776,CLIENT TEST,,,": b"R",
+    b"PP,CLIENT TEST,,,,,": b"R",
+    b"PP,PP,PP,PP,PP,PP,PP": "E:L'adresse e-mail du destinataire n'est pas valide".encode(),
+}
+
+# Réponses de 36 (commentaire) dans une facture ouverte, observées le 2026-10-16. Une 36 acceptée
+# ne compte pas comme article (33 répond toujours « ajouter le produit en premier »).
+AUCUNE_DONNEE = "E:Aucune donnée valide n'a été reçue".encode()
+E_TAXE = "E:La taxe est incorrecte!".encode()
+# Types d'article de la note 2025-0889 (annexe). 2026-10-28 : LOCBIE, LOCSER, IMPBIE passent ; le code IMPSERV
+# n'existe pas pour l'appareil, qui doit écrire IMPSER comme la mention imprimée (non essayé)
+TYPES_ARTICLE = (b"LOCBIE", b"LOCSER", b"IMPBIE", b"IMPSER")
+C36_OBSERVE = {
+    b"A,ESSAI": b"R",
+    b"ESSAI": AUCUNE_DONNEE,
+    b"Z,ESSAI": AUCUNE_DONNEE,
+    b"A,ESSAI,X": AUCUNE_DONNEE,
+}
+
+
+class FauxMCF:
+    def __init__(self, variante="NE", journal=None, latence=0.0, nouveau=None):
+        self.variante, self.journal, self.latence = variante, journal, latence
+        self.ventes, self.tc, self.total, self.type, self.ttc = 0, 2, 0.0, "FV", True
+        self.ouverte, self.articles, self.commentaires = False, 0, 0
+        # (données, réponse) en octets : un seul C3 qui s'écarte du message connu.
+        # Sert à vérifier qu'une recherche s'arrête. Absent : aucun écart.
+        self.nouveau = nouveau
+
+    def redemarrer(self):
+        """Arrêt et rallumage : la facture ouverte disparaît, sans être comptée (2026-10-12)."""
+        self.ouverte, self.articles, self.total, self.commentaires = False, 0, 0.0, 0
+
+    def repondre(self, seq, cmd, data):
+        """Trame complète. FIS : C3 pendant une facture ouverte = NAK puis trame vide, statut A2 (2026-10-12)."""
+        if self.variante == "FIS" and cmd == 0xC3 and self.ouverte:
+            return b"\x15" + reponse(seq, cmd, b"", b"\xa2" + b"\x80" * 5)
+        if self.variante == "FIS" and cmd == 0x2B and data not in SOCIETE:
+            # 2B I5 : NAK, statut A1 (2026-10-16), et non A2 comme le C3 refusé dans l'état
+            return b"\x15" + reponse(seq, cmd, b"", b"\xa1" + b"\x80" * 5)
+        return reponse(seq, cmd, self.donnees(cmd, data))
+
+    def fis(self, cmd, data):
+        """Réponse du FIS-NANO quand elle a été observée ; None : réponse commune."""
+        champs = data.decode("latin-1").split(",")
+        if cmd == 0xC3:
+            # vide, CC (3e, 4e), 1 (3e) : aucun type accepté connu. Le crochet
+            # `nouveau` substitue une réponse, pour prouver un arrêt de recherche.
+            if self.nouveau is not None and data == self.nouveau[0]:
+                r = self.nouveau[1]
+                return r if isinstance(r, bytes) else r.encode("latin-1")
+            if data in C3_OBSERVE:
+                return C3_OBSERVE[data]
+            return b"E:Erreur de type de destinataire"
+        if cmd == 0xC0:
+            if len(champs) < 4 or champs[3] not in TYPES_FACTURE:
+                return E_FORMAT  # formats béninois du 09 (taux en 4e champ)
+            self.ouverte, self.articles, self.commentaires = True, 0, 0
+            return None
+        if cmd == 0x36:
+            if not self.ouverte:
+                return "E:La commande C0 doit être soumise en premier".encode()
+            r = C36_OBSERVE.get(data, INCONNU)
+            if r == b"R":
+                self.commentaires += 1
+            return r
+        if cmd == 0x31:
+            if not self.ouverte:
+                return "E:La commande C0 doit être soumise en premier".encode()
+            # 2026-10-28 : la forme RDC `nom⇥TYPE,X%Y⇥prix` est lue. Format sans `%` ou avec `;` au prix ;
+            # puis le type (BIE : n'existe pas ; LOCBIE passe) ; puis la taxe, jamais acceptée (25 formes)
+            parties = data.split(b"\t")
+            if len(parties) == 3 and b"," in parties[1]:
+                ty, _, tx = parties[1].partition(b",")
+                if b"%" not in tx or b";" in parties[2]:
+                    return E_FORMAT
+                if ty not in TYPES_ARTICLE:
+                    return "E:Le type de produit n'existe pas".encode()
+                return E_TAXE
+            # aucune forme d'article acceptée connue : plus de 500 formes refusées (09 au 15)
+            return E_FORMAT
+        if cmd == 0x38 and self.ouverte and not self.articles and data:
+            return "E:La commande 35 doit être soumise en premier.".encode()  # 38 `C`, 2026-10-28
+        if cmd in (0x33, 0x35, 0x38) and self.ouverte and not self.articles:
+            # 2026-10-16 : après une 36 acceptée, le 33 ajoute un point final (jamais vu avant, sans 36 : 12 octobre)
+            point = b"." if self.commentaires and cmd == 0x33 else b""
+            return {0x33: b"E:Veuillez ajouter le produit en premier" + point,
+                    0x35: "E:Le montant payé est suffisant".encode(),
+                    0x38: "E:Aucune donnée valide n'a été reçue".encode()}[cmd]
+        if cmd in (0xC1, 0xC2, 0x2B):
+            return None
+        return INCONNU
+
+    def noter(self, texte):
+        if self.journal:
+            with open(self.journal, "a", encoding="utf-8") as j:
+                j.write(time.strftime("%H:%M:%S ") + texte + "\n")
+
+    def donnees(self, cmd, data):
+        maintenant = time.strftime("%Y%m%d%H%M%S")
+        if self.variante == "FIS":
+            r = self.fis(cmd, data)
+            if r is not None:
+                return r
+        if cmd == 0xC1:
+            vides = ",,,," if self.variante == "NE" else ",,,,,,"  # BF et FIS : 31 champs
+            r = "%s-1,%s,%s,%d,%d,0%s%s,%s" % (NIM, IFU, maintenant, self.tc, self.ventes, vides, TAUX, PSVB)
+        elif cmd == 0xC2:
+            r = "%d,%d,%s" % (self.tc, self.tc, maintenant)
+        elif cmd == 0x2B:
+            r = SOCIETE.get(data[:2], "")
+        elif cmd == 0xC3:
+            r = "1"
+        elif cmd == 0xC0:
+            # ECOHADA (NE) exige exactement 7 champs (0x40a503) ; l'appareil BF en a renvoyé 8 le 2026-10-09
+            self.total = 0.0
+            champs = data.decode("latin-1").split(",")
+            self.type = champs[3] if len(champs) > 3 else "FV"
+            self.ttc = "HT" not in champs[4:6]
+            r = "%d,%d" % (self.ventes + 1, self.tc + 1) + "," * (5 if self.variante == "NE" else 6)
+        elif cmd == 0x31:
+            # nom<TAB><groupe><taux>%<montant de la ligne><TAB><prix>*<qté>[;T<col 5>,<col 6>] (vu le 2026-10-10)
+            m = re.search(rb"\t[A-Z]([0-9.]+)%(-?[0-9.]+)\t", data)
+            if m:
+                montant = float(m.group(2))
+                self.total += montant if self.ttc else montant * (1 + float(m.group(1)) / 100)
+            r = "%.0f,0,0,0,0" % self.total
+        elif cmd == 0x33:
+            r = "%.0f" % self.total + ",0" * 14
+        elif cmd == 0x35:
+            r = "R"
+        elif cmd == 0x38:
+            self.ventes += 1; self.tc += 1
+            r = "%d,%d,%s,%s,%s,%s,%s" % (self.ventes, self.tc, self.type, maintenant, NIM, IFU, SIGNATURE)
+        else:
+            r = ""
+        return r.encode("latin-1")
+
+    def servir(self, fd, nombre=None):
+        vues = 0
+        while nombre is None or vues < nombre:
+            req = lire_requete(fd)
+            if not req:
+                return
+            seq, cmd, data = req[2], req[3], req[4:-6]
+            self.noter("recu  %02X seq=%02X donnees=%r hex=%s" % (cmd, seq, data.decode("latin-1"), req.hex(" ")))
+            rep = self.repondre(seq, cmd, data)
+            d = rep.index(1)
+            self.noter("envoi %02X %sdonnees=%r" % (cmd, "NAK " if d else "", rep[d+4:rep.index(4, d)].decode("latin-1")))
+            time.sleep(self.latence)
+            os.write(fd, rep)
+            vues += 1
+
+
+def main(argv=None):
+    a = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    a.add_argument("--lien", required=True)
+    a.add_argument("--journal", required=True)
+    a.add_argument("--variante", choices=("NE", "BF", "FIS"), default="NE")
+    o = a.parse_args(argv)
+    maitre, esclave = os.openpty()
+    tty.setraw(esclave)
+    if os.path.lexists(o.lien):
+        os.remove(o.lien)
+    os.symlink(os.ttyname(esclave), o.lien)
+    print("faux MCF %s sur %s" % (o.variante, os.ttyname(esclave)), flush=True)
+    FauxMCF(o.variante, o.journal).servir(maitre)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

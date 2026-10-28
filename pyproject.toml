@@ -1,0 +1,10 @@
+[project]
+name = "mcf-protocole-bf"
+version = "0.1.0"
+description = "Protocole SFE-MCF (Burkina Faso) : outils d'essai, simulateur et recherche"
+requires-python = ">=3.11"
+dependencies = ["pyserial>=3.5"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

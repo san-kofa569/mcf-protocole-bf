@@ -1,0 +1,13 @@
+# Données réelles du terrain (IFU, NIM, adresse, téléphone…) : jamais dans le dépôt
+appareil/brut/
+
+# Logiciels et documents tiers téléchargés (empreintes dans docs/EXTERNE.md)
+externe/
+
+# Journaux de vérification (recopient des sorties du terrain)
+logs/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
