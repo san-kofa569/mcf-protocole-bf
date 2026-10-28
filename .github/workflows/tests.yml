@@ -1,0 +1,33 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        python: ["3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      # la cale pty (simulateur/modem_pty.c) se compile en 64 et en 32 bits
+      - name: Compilateur 32 bits
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update -q
+          sudo apt-get install -y -q gcc-multilib libc6:i386
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Dépendances
+        run: python -m pip install pyserial==3.5 pytest
+      - name: Compilation
+        run: python -m compileall -q appareil simulateur tests
+      - name: Tests
+        run: python -m pytest -q

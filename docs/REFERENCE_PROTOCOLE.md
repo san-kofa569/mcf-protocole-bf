@@ -144,6 +144,8 @@ soumise en premier.` Vide, sans article : `E:Aucune donnée valide n'a été re�
 Réponse à 8 champs : compteur de factures de vente, compteur total, type (`FV`), date `AAAAMMJJhhmmss`, `{NIM}`, `{IFU}`,
 **signature (24 caractères)**, FN. Valeurs réelles dans `appareil/brut/2026-10-28_seance.txt` (hors dépôt).
 📖 RDC : réponse `P:` = renvoyer la même commande (jamais vue).
+✅ Transmission : un C2 lancé 20 minutes après répond `3,3,{date}` (3 documents envoyés sur 3, dernier contact
+10 minutes après le 38) : la facture certifiée est partie au serveur de la DGI.
 
 ### Annulation
 

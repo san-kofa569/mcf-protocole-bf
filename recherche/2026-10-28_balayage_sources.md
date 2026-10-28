@@ -144,4 +144,5 @@ Captures : `appareil/brut/2026-10-28_seance.txt` (hors dépôt).
 - ✅ Le verrou de la 31 était le **PSVB du C0** : « La taxe est incorrecte! » vise la taxe de la facture, pas l'écriture de la
   ligne (la même trame, refusée à 12:21 dans ESSAI-0007, passe à 12:26 dans ESSAI-0008).
 - ✅ 38 burkinabè = `MV` seul (RDC : `MV,MT`).
+- ✅ C2 à 12:53 : `3,3,…` (3 documents envoyés sur 3, dernier contact 11:41 UTC) : la facture est transmise.
 - Détail des formats : `docs/REFERENCE_PROTOCOLE.md` §4–5.
