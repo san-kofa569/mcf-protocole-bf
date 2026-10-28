@@ -5,6 +5,7 @@ Un {IFU} dans les données est remplacé par la variable d'environnement MCF_IFU
 sans elle, ou si elle ne fait pas 9 caractères alphanumériques, rien n'est envoyé (la simulation, elle, affiche la trame telle quelle).
 Un {SIG} (signature d'une facture d'origine, pour un avoir) est remplacé par MCF_SIG : 24 caractères A–Z, 0–9 ;
 {SIG4} par la même en six groupes de 4 séparés par des tirets (forme imprimée du code SECeF au Bénin et au Niger).
+{NIM-ACNT} est remplacé par MCF_NIM, l'identifiant tel que l'appareil l'écrit (`AA99999999-1`), {NIM} par sa partie NIM.
 """
 import os
 import re
@@ -47,6 +48,11 @@ def remplir(texte, env=os.environ):
         if not re.fullmatch(r"[A-Z0-9]{24}", sig):
             return None
         texte = texte.replace("{SIG4}", "-".join(sig[i:i + 4] for i in range(0, 24, 4))).replace("{SIG}", sig)
+    if "{NIM}" in texte or "{NIM-ACNT}" in texte:
+        nim = env.get("MCF_NIM", "")
+        if not re.fullmatch(r"[A-Z]{2}\d{8}-\d+", nim):
+            return None
+        texte = texte.replace("{NIM-ACNT}", nim).replace("{NIM}", nim.rsplit("-", 1)[0])
     return texte
 
 

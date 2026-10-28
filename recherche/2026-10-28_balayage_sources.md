@@ -189,3 +189,5 @@ Captures : `appareil/brut/2026-10-28_seance.txt` (hors dépôt).
 - ✅ Les signatures du mode Test commencent par `TESTFACT` (vérifié sur les trois de la capture).
 - Suite : RN en six groupes de 4 avec tirets, puis FN d'origine, puis numéro d'origine (`cycle.py --scenario avoir`,
   écho masqué à l'écran).
+- 15:10 : RN = signature à tirets, FN d'origine, numéro d'origine → même refus ; l'écho reprend la valeur telle quelle.
+  Suite : `NIM-TC` (forme d'ECOHADA au Niger), `NIM-ACNT-TC`, `2/4 FV` (identifiant unique de la note 0887), `NIM-2`.

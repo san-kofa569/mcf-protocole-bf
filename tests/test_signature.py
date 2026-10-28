@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 
-from appareil.signature import main, signature
+from appareil.signature import identifiant, main, signature
 
 # valeurs fictives, à la forme de l'appareil
 SIG1, SIG2 = "ABCDEFGHIJKLMNOPQRSTUV23", "ZYXWVUTSRQPONMLKJIHGFE45"
@@ -32,6 +32,10 @@ class Signature(unittest.TestCase):
     def test_numero_ou_type_inconnu(self):
         self.assertIsNone(signature(CAPTURE, "3"))
         self.assertIsNone(signature(CAPTURE, "1", "FA"))
+
+    def test_identifiant_nim_acnt(self):
+        self.assertEqual(identifiant(CAPTURE), "XX99999999-1")
+        self.assertIsNone(identifiant(CAPTURE[:2]))
 
     def test_n_ecrit_que_la_signature(self):
         with tempfile.NamedTemporaryFile("w", delete=False, encoding="utf-8") as f:

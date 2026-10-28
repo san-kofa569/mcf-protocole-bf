@@ -88,7 +88,8 @@ L'exemple accepté ci-dessous met donc le nom à la place de l'IFU ; la forme r�
 - ✅ Forme de la facture certifiée du 2026-10-28 : `1,Essai,{IFU},FV,TTC,ISF-ESSAI,ESSAI-0008,A`.
 - ✅ **Avoir** : `op,nom,{IFU},FA,COR,RN,TTC,ISF,FN,PSVB` (10 champs) est lu ; la nature 📜 `COR`, `RAN`, `RAM`, `RRR`.
   RN (référence de la facture d'origine) = signature brute de 24 caractères : `E:Erreur de format RN! <RN>` — le message
-  **renvoie la valeur reçue** (2026-10-28 15:06). ❓ Forme de RN attendue : à trouver (tirets, FN ou numéro d'origine).
+  **renvoie la valeur reçue** (2026-10-28 15:06). Refusés aussi (15:10) : signature en groupes de 4 à tirets, FN d'origine
+  (`ESSAI-0009`), numéro d'origine (`2`). ❓ Forme de RN : à trouver ; 📖 au Niger, ECOHADA écrit `NIM-TC` (TC d'origine).
 
 - ✅ `E:Erreur de format des données ou incompatibilité` = **nombre de champs faux** (5, 6, 12 champs).
 - ✅ Réponse : `n,tc,` suivi des **champs 2 à 7 du client** déclaré par C3 : `1,3,CLIENT TEST,,,70123456,client@example.com,`.

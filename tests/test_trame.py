@@ -57,6 +57,13 @@ class Remplir(unittest.TestCase):
         self.assertEqual(remplir("COR,{SIG4}", env), "COR,ABCD-EFGH-IJKL-MNOP-QRST-UV23")
         self.assertIsNone(remplir("COR,{SIG4}", {}))
 
+    def test_nim_et_nim_acnt(self):
+        env = {"MCF_NIM": "XX99999999-1"}
+        self.assertEqual(remplir("FA,COR,{NIM}-4", env), "FA,COR,XX99999999-4")
+        self.assertEqual(remplir("FA,COR,{NIM-ACNT}-4", env), "FA,COR,XX99999999-1-4")
+        for faux in ({}, {"MCF_NIM": "XX99999999"}, {"MCF_NIM": "xx99999999-1"}):
+            self.assertIsNone(remplir("{NIM}-4", faux), faux)
+
     def test_signature_absente_ou_invalide_refusee(self):
         for sig in (None, "", "ABCDEFGHIJKLMNOPQRSTUV2", "abcdefghijklmnopqrstuv23", "ABCDEFGHIJKLMNOPQRSTUV2…"):
             env = {} if sig is None else {"MCF_SIG": sig}
