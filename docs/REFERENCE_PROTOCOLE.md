@@ -54,14 +54,15 @@ Sept champs séparés par des virgules, **avant** C0. Réponse de succès : `R`.
 | Champ | Rôle (📖 RDC : `type,NIF,nom,adresse,tél,e-mail,RCCM`) | Contrôle |
 |---|---|---|
 | 1 | type de client (📜 annexe SFE : `CC`, `PM`, `PP`, `PC`) | aucun vu (consommé, non recopié par C0) |
-| 2 | IFU du client | aucun vu (`CLIENT TEST` accepté) |
+| 2 | **IFU du client** (✅ le reçu de l'appareil l'affiche « ACHETEUR — IFU », 2026-10-28) | aucun vu (`CLIENT TEST` accepté) |
 | 3 | nom | aucun |
 | 4 | adresse | aucun |
 | 5 | téléphone | contrôle (un e-mail y donne `L'TEL e-mail du destinataire n'est pas valide`, texte de l'e-mail avec « adresse » remplacé par « TEL ») |
 | 6 | e-mail | `x` ou un numéro : `L'adresse e-mail du destinataire n'est pas valide` ; `client@example.com` ou vide : accepté |
 | 7 | RCCM | aucun |
 
-L'exemple accepté ci-dessous met donc le nom à la place de l'IFU ; la forme régulière serait `PP,,CLIENT TEST,,70123456,…` (non essayée).
+L'exemple accepté ci-dessous met donc le nom à la place de l'IFU — l'écran des reçus affiche bien « IFU : CLIENT TEST » ;
+la forme régulière est `PP,,CLIENT TEST,,70123456,…` (non essayée).
 
 - ✅ Exemple accepté : `PP,CLIENT TEST,,,70123456,client@example.com,`.
 - ✅ Un C3 vide (aucune donnée) répond `R` aussi.
@@ -174,7 +175,10 @@ Mentions à imprimer (📜 note 0887 §2.10.3–2.10.4), tirées de cette répon
 de l'application fiscale n'en montre pas (2026-10-28) : le logiciel de facturation le construit. 🔍 **Hypothèse** : le
 gabarit qu'ECOHADA écrit pour le Bénin et le Niger (même famille SyGMEF), `F;{identifiant};{signature};{IFU};{date}`, tiré des
 champs 5, 7, 6 et 4 du 38 (`appareil/qr.py`). Preuve à faire : scanner le QR d'un ticket imprimé par l'appareil et le
-comparer à la capture (`python3 -m appareil.qr --comparer …`, qui ne montre que la place de chaque morceau).
+comparer à la capture (`python3 -m appareil.qr --comparer …`, qui ne montre que la place de chaque morceau). L'appareil
+n'imprime ni n'affiche de QR (reçu d'ESSAI-0008 : acheteur, article, total, paiement). Preuve possible : l'application
+officielle de la DGI « FEC Burkina-Faso » (`verificationfec.apps.dgi.bf`), qui vérifie une facture par son QR ;
+`python3 -m appareil.qr --images` fabrique les variantes à lui présenter.
 ✅ En mode Test, la signature commence par `TESTFACT` (3 signatures sur 3), suivie de 16 caractères propres à la facture.
 ✅ C1 garde la dernière facture certifiée : date (7e champ), type (8e), signature (9e), **nombre total de factures**
 (10e : ventes et avoirs, 4 après FV n°3 et FA n°1), montant (11e). Compteurs (4e à 6e) : transactions, ventes, avoirs.

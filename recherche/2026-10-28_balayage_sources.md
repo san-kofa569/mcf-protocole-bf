@@ -243,3 +243,8 @@ Captures : `appareil/brut/2026-10-28_seance.txt` (hors dépôt).
   Hypothèse retenue pour le Burkina (même famille, même nom de système que le Niger), `appareil/qr.py`.
 - Preuve sans tiers : le ticket imprimé par l'appareil, scanné, comparé à la réponse du 38 de la même facture
   (`python3 -m appareil.qr --comparer`).
+- Reçu d'ESSAI-0008 à l'écran (photo, 15:18 heure de l'appareil) : « Facture Num. ESSAI-0008 », ACHETEUR, **IFU : CLIENT
+  TEST** (le 2e champ du C3), 1 article 100,00, total 102,00, espèces 102,00. Ni QR ni impression.
+- Application officielle « FEC Burkina-Faso » (`verificationfec.apps.dgi.bf`, Play Store ; compte par e-mail) : vérifie une
+  facture en scannant son QR. Même forme d'identifiant qu'au Bénin (`mecefbenin.apps.impots.bj`). `appareil/qr.py --images`
+  fabrique quatre variantes du QR d'ESSAI-0008 à lui présenter.

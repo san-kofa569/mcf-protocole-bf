@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from contextlib import redirect_stdout
 
-from appareil.qr import comparer, contenu, main, reponse_38
+from appareil.qr import comparer, contenu, images, main, reponse_38, variante
 
 # valeurs fictives, à la forme de l'appareil
 R38 = "1,3,FV,20261028113101,XX99999999-1,99999999Z,ABCDEFGHIJKLMNOPQRSTUV23,ESSAI-0008"
@@ -44,6 +44,28 @@ class Comparer(unittest.TestCase):
         self.assertIn("5 : autre (", texte)
         self.assertIn(": non", texte)
         self.assertNotIn("ABCDEFGHIJ", texte)
+
+
+class Variantes(unittest.TestCase):
+    def test_quatre_variantes(self):
+        self.assertEqual(variante("A", R38), contenu(R38))
+        self.assertEqual(variante("B", R38), "F;XX99999999;ABCDEFGHIJKLMNOPQRSTUV23;99999999Z;20261028113101")
+        self.assertEqual(variante("C", R38), "XX99999999-1;ABCDEFGHIJKLMNOPQRSTUV23;99999999Z;20261028113101")
+        self.assertEqual(variante("D", R38), "F;XX99999999-1;ABCD-EFGH-IJKL-MNOP-QRST-UV23;99999999Z;20261028113101")
+
+    def test_images_ecrites_et_rien_d_affiche(self):
+        with tempfile.TemporaryDirectory() as d:
+            faites = images(R38, os.path.join(d, "qr"))
+            self.assertEqual([l for l, _, _ in faites], ["A", "B", "C", "D"])
+            self.assertTrue(all(os.path.getsize(c) > 0 for _, c, _ in faites))
+            capture = os.path.join(d, "c.txt")
+            with open(capture, "w", encoding="utf-8") as f:
+                f.write("2026-10-28 12:31:01 envoi : 01 2a ef 38 31 05 30 33 30 3e 03\ndonnées : " + R38 + "\n")
+            sortie = io.StringIO()
+            with redirect_stdout(sortie):
+                self.assertEqual(main(["--images", "--capture", capture, "--numero", "1", "--dossier", os.path.join(d, "q")]), 0)
+            self.assertNotIn("XX99999999", sortie.getvalue())
+            self.assertNotIn("ABCDEFGHIJ", sortie.getvalue())
 
 
 class Commande(unittest.TestCase):
