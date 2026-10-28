@@ -5,6 +5,10 @@ Le cycle prouvé le 2026-10-28 (docs/REFERENCE_PROTOCOLE.md §4–5) : C3, C0 av
 la facture reste ouverte et un C1 l'annule. La réponse du 38 (NIM, IFU, signature) n'est jamais affichée :
 seulement ses compteurs et son nombre de champs.
 
+Le 35 répond `R0` quand tout est payé, `R-114.2` quand 114.2 reste dû. L'appareil accepte un montant négatif
+et certifie au 38 une facture qui n'est pas soldée (2026-10-28, 14:44) : c'est donc ici qu'on le refuse. Aucun
+paiement nul ou négatif ne part, et le 38 ne part qu'après un `R0`.
+
 Scénarios :
   simple      un bien en groupe B, payé en espèces (la facture du 28 octobre) ;
   deux        un bien (B, 18 %) et un service (C, 10 %), payés en mobile money puis en espèces pour le reste :
@@ -58,7 +62,7 @@ def etapes(scenario, fn):
     if scenario == "deux":
         return debut + [("bien", 0x31, BIEN), ("service", 0x31, SERVICE), ("sous-total", 0x33, ""),
                         ("mobile", 0x35, "M100.00"),
-                        ("reste", 0x35, lambda e: "E" + montant(e["reste"])),
+                        ("reste", 0x35, lambda e: "E" + montant(e["du"])),
                         ("normalisation", 0x38, lambda e: montant(e["total"]))]
     if scenario == "annulation":
         return debut + [("article", 0x31, BIEN), ("sous-total", 0x33, ""),
@@ -75,7 +79,8 @@ def lire(recu):
         return None, "silence"
     debut = recu[:recu.index(1)] if 1 in recu else recu
     if b"\x15" in debut:
-        return None, "NAK"
+        p = paquet(recu)
+        return None, "NAK" + (", statut " + p[1].hex(" ") if p else "")
     p = paquet(recu)
     if p is None or bcc_ok(recu) is not True:
         return None, "trame illisible"
@@ -97,6 +102,12 @@ def jouer(scenario, fn, envoyer, delai=0.0, tracer=print):
         if i and delai:
             time.sleep(delai)
         d = donnees(etat) if callable(donnees) else donnees
+        if cmd == 0x35 and not (re.fullmatch(r"[A-Z]\d+\.\d{2}", d) and float(d[1:]) > 0):
+            tracer("%s %02X %r : ARRÊT avant envoi, paiement nul ou négatif." % (nom, cmd, d))
+            return 1
+        if cmd == 0x38 and nom != "sonde" and etat.get("du") != 0:
+            tracer("%s %02X %r : ARRÊT avant envoi, la facture n'est pas soldée (reste %s)." % (nom, cmd, d, etat.get("du")))
+            return 1
         r, motif = lire(envoyer(cmd, d))
         if r is None:
             tracer("%s %02X %r : ARRÊT, %s" % (nom, cmd, d, motif))
@@ -110,7 +121,11 @@ def jouer(scenario, fn, envoyer, delai=0.0, tracer=print):
         if cmd == 0x33:
             etat["total"] = float(r.split(",")[0])
         if cmd == 0x35:
-            etat["reste"] = float(r[1:])
+            reste = float(r[1:])
+            if reste > 0:
+                tracer("ARRÊT : reste positif %s, jamais vu (rendu de monnaie ?)." % r)
+                return 1
+            etat["du"] = round(-reste, 2) if reste else 0
     return 0
 
 

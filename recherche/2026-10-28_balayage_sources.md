@@ -146,3 +146,24 @@ Captures : `appareil/brut/2026-10-28_seance.txt` (hors dépôt).
 - ✅ 38 burkinabè = `MV` seul (RDC : `MV,MT`).
 - ✅ C2 à 12:53 : `3,3,…` (3 documents envoyés sur 3, dernier contact 11:41 UTC) : la facture est transmise.
 - Détail des formats : `docs/REFERENCE_PROTOCOLE.md` §4–5.
+
+## 9. Deuxième séance : deux lignes, deux modes (14:44–14:45), client `appareil/cycle.py`
+
+| Heure | Trame | Réponse |
+|---|---|---|
+| 14:44:38 | C3 | `R` |
+| 14:44:41 | C0 `…,ESSAI-0009,A` | `2,4,CLIENT TEST,…` (compteurs avancés) |
+| 14:44:45 | 31 bien `LOCBIE,B18.0%100.00⇥100.00*1` | `100.0,84.75,15.25,0.0` |
+| 14:44:48 | 31 service `LOCSER,C10.0%110.00⇥110.00*1` | `110.0,100.0,10.0,0.0` |
+| 14:44:51 | 33 | total `214.2` ; B 100, C 110 ; TVA 15.25 et 10.0 ; **PSVB 4.2** (2 % de 210 : services compris) |
+| 14:44:54 | 35 `M100.00` | **`R-114.2`** (reste dû en négatif ; mode M accepté) |
+| 14:44:57 | 35 `E-114.20` | `R-228.4` — **erreur du client** : il a recopié le reste avec son signe |
+| 14:45:01 | 38 `214.20` | accepté, compteurs `2/4 FV` : **facture certifiée non soldée** |
+| 14:45:06 | C3 (scénario annulation) | NAK : arrêt avant toute autre trame |
+| 14:45:15 | C1 | compteurs `4,2,0`, statut normal : aucune facture ouverte |
+
+- ✅ L'appareil ne contrôle ni le signe d'un paiement ni le solde avant le 38. ESSAI-0009 porte donc des paiements
+  incohérents (M 100.00, E -114.20) sur l'environnement de test : à corriger par un avoir quand sa forme sera connue.
+- Client corrigé : `R-x` = x dû ; aucun paiement nul ou négatif ; 38 seulement après `R0`. Jumeau mis à jour (PSVB sur
+  toutes les lignes, mode M, reste négatif, 38 sans contrôle du solde).
+- 🔍 NAK au C3 5 s après un 38 : appareil occupé après la clôture ; la sonde d'annulation est à relancer après une pause.

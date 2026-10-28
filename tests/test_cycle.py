@@ -30,7 +30,7 @@ class Etapes(unittest.TestCase):
         self.assertEqual([n for n, _, _ in e][2:], ["bien", "service", "sous-total", "mobile", "reste", "normalisation"])
         self.assertEqual(e[3][2], SERVICE)
         self.assertEqual(e[5][2], "M100.00")
-        self.assertEqual(e[6][2]({"reste": 112.0}), "E112.00")
+        self.assertEqual(e[6][2]({"du": 114.2}), "E114.20")
 
     def test_annulation_finit_sur_la_sonde(self):
         self.assertEqual(etapes("annulation", "X")[-1], ("sonde", 0x38, "C"))
@@ -49,13 +49,34 @@ class AuJumeau(unittest.TestCase):
         self.assertNotIn("XX99999999", sortie)
         self.assertNotIn("99999999Z", sortie)
 
-    def test_deux_s_arrete_au_mode_jamais_vu(self):
-        # le jumeau ne connaît que les espèces : le mobile money répond INCONNU, le scénario s'arrête
+    def test_deux_paie_le_reste_du_et_solde(self):
+        # 14:44 sur l'appareil : R-114.2 veut dire 114.2 dû ; le client paie 114.20, pas -114.20
         code, sortie = lancer("--scenario", "deux", "--fn", "ESSAI-0009", "--jumeau")
+        self.assertEqual(code, 0)
+        self.assertIn("sous-total 33 '' -> 214.2,", sortie)
+        self.assertIn("mobile 35 'M100.00' -> R-114.2", sortie)
+        self.assertIn("reste 35 'E114.20' -> R0", sortie)
+        self.assertIn("normalisation 38 '214.20' -> accepté", sortie)
+
+    def test_pas_de_38_sur_une_facture_non_soldee(self):
+        e = [("client", 0xC3, CLIENT), ("ouverture", 0xC0, "1,Essai,{IFU},FV,TTC,ISF-ESSAI,X,A"),
+             ("article", 0x31, BIEN), ("sous-total", 0x33, ""), ("mobile", 0x35, "M50.00"),
+             ("normalisation", 0x38, "102.00")]
+        mcf = FauxMCF(variante="FIS")
+        with mock.patch("appareil.cycle.etapes", lambda s, fn: e):
+            code, sortie = lancer("--scenario", "simple", "--fn", "X", "--jumeau", mcf=mcf)
         self.assertEqual(code, 1)
-        self.assertIn("service 31 'POSE TEST\\tLOCSER,C10.0%110.00\\t110.00*1' -> 110.0,100.0,10.0,0.0", sortie)
-        self.assertIn("mobile 35 'M100.00' -> E:??", sortie)
-        self.assertIn("ARRÊT : réponse inattendue", sortie)
+        self.assertIn("ARRÊT avant envoi, la facture n'est pas soldée (reste 52.0)", sortie)
+        self.assertEqual(mcf.ventes, 0)
+
+    def test_jamais_de_paiement_negatif(self):
+        e = [("client", 0xC3, CLIENT), ("reste", 0x35, "E-114.20")]
+        with mock.patch("appareil.cycle.etapes", lambda s, fn: e), mock.patch.object(FauxMCF, "repondre") as r:
+            r.side_effect = lambda seq, cmd, d: __import__("simulateur.faux_mcf", fromlist=["reponse"]).reponse(seq, cmd, b"R")
+            code, sortie = lancer("--scenario", "simple", "--fn", "X", "--jumeau")
+        self.assertEqual(code, 1)
+        self.assertIn("ARRÊT avant envoi, paiement nul ou négatif", sortie)
+        self.assertEqual(r.call_count, 1)  # seul le C3 est parti
 
     def test_sans_psvb_l_arret_vient_de_la_31(self):
         mcf = FauxMCF(variante="FIS")

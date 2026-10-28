@@ -70,7 +70,6 @@ E_TAXE = "E:La taxe est incorrecte!".encode()
 # Types d'article de la note 2025-0889 (annexe). 2026-10-28 : LOCBIE, LOCSER, IMPBIE passent ; le code IMPSERV
 # n'existe pas pour l'appareil, qui doit écrire IMPSER comme la mention imprimée (non essayé)
 TYPES_ARTICLE = (b"LOCBIE", b"LOCSER", b"IMPBIE", b"IMPSER")
-BIENS = (b"LOCBIE", b"IMPBIE")
 C0_EN_PREMIER = "E:La commande C0 doit être soumise en premier".encode()
 
 
@@ -90,7 +89,7 @@ class FauxMCF:
         self.variante, self.journal, self.latence = variante, journal, latence
         self.ventes, self.tc, self.total, self.type, self.ttc = 0, 2, 0.0, "FV", True
         self.ouverte, self.articles, self.commentaires = False, 0, 0
-        self.lignes, self.paye, self.psvb, self.fn, self.client = [], 0.0, None, "", None
+        self.lignes, self.paye, self.paiements, self.psvb, self.fn, self.client = [], 0.0, 0, None, "", None
         # (données, réponse) en octets : un seul C3 qui s'écarte du message connu.
         # Sert à vérifier qu'une recherche s'arrête. Absent : aucun écart.
         self.nouveau = nouveau
@@ -98,21 +97,20 @@ class FauxMCF:
     def redemarrer(self):
         """Arrêt et rallumage : la facture ouverte disparaît, sans être comptée (2026-10-12)."""
         self.ouverte, self.articles, self.total, self.commentaires = False, 0, 0.0, 0
-        self.lignes, self.paye, self.psvb = [], 0.0, None
+        self.lignes, self.paye, self.paiements, self.psvb = [], 0.0, 0, None
 
     def montants(self):
         """(total à payer, 16 montants TTC, 16 TVA, PSVB) de la facture ouverte, en mode TTC.
 
-        Vu le 2026-10-28 sur un article de groupe B : TVA du groupe = TTC × taux / (100 + taux) arrondie au
-        centime ; PSVB = taux de la catégorie du C0 × TTC ; total = TTC + PSVB. 🔍 PSVB sur les seuls biens
-        (« prélèvement sur vente de biens », SFE §6.10), TVA calculée par groupe et non par ligne.
+        Vu le 2026-10-28 (un bien B ; puis un bien B et un service C) : TVA du groupe = TTC × taux / (100 + taux)
+        arrondie au centime ; PSVB = taux de la catégorie du C0 × TTC de **toutes** les lignes, services compris
+        (4.2 sur 210) ; total = TTC + PSVB. 🔍 TVA calculée par groupe et non par ligne (un article par groupe vu).
         """
         ttc = [0.0] * 16
         for groupe, montant, _ in self.lignes:
             ttc[ord(groupe) - 65] += montant
         tva = [round(m * t / (100 + t), 2) for m, t in zip(ttc, TAUX_GROUPES)]
-        biens = sum(m for _, m, ty in self.lignes if ty in BIENS)
-        psvb = round(biens * TAUX_PSVB[self.psvb] / 100, 2)
+        psvb = round(sum(ttc) * TAUX_PSVB[self.psvb] / 100, 2)
         return round(sum(ttc) + psvb, 2), ttc, tva, psvb
 
     def article(self, ty, tx, prix):
@@ -138,8 +136,9 @@ class FauxMCF:
     def normaliser(self, data):
         """38 d'une facture à articles : `MV` seul, le total du 33 (2026-10-28)."""
         total = self.montants()[0]
-        if self.paye + 0.005 < total:
+        if not self.paiements:
             return "E:La commande 35 doit être soumise en premier.".encode()  # 🔍 vu sur une facture sans article
+        # 2026-10-28 14:45 : une facture non soldée (reste -228.4) a été certifiée : aucun contrôle du paiement
         if b"," in data:
             return "E:MV n'est pas un nombre valide.".encode()  # 5 formes à virgule, 2026-10-28
         try:
@@ -221,12 +220,15 @@ class FauxMCF:
             total, ttc, tva, psvb = self.montants()
             return ",".join(nombre(v) for v in [total] + ttc + tva + [psvb, 0.0]).encode()
         if cmd == 0x35 and self.ouverte and self.articles:
-            m = re.fullmatch(rb"E([0-9.]+)", data)  # seules les espèces ont été essayées
+            m = re.fullmatch(rb"[EM](-?[0-9.]+)", data)  # espèces et mobile money essayés ; un montant négatif passe
             if not m:
                 return INCONNU
-            self.paye += float(m.group(1))
-            # payé exactement : R0 ; paiement partiel ou excédent : jamais vu
-            return b"R0" if abs(self.paye - self.montants()[0]) <= 0.005 else INCONNU
+            self.paye += float(m.group(1)); self.paiements += 1
+            ecart = round(self.paye - self.montants()[0], 2)
+            if abs(ecart) < 0.005:
+                return b"R0"
+            # reste dû écrit en négatif (R-114.2, R-228.4) ; un excédent n'a jamais été vu
+            return b"R" + nombre(ecart).encode() if ecart < 0 else INCONNU
         if cmd == 0x38 and self.ouverte and self.articles:
             return self.normaliser(data)
         if cmd == 0x38 and self.ouverte and not self.articles and data:

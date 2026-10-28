@@ -252,18 +252,31 @@ class CycleFisNano(unittest.TestCase):
         self.assertEqual(self.mcf.donnees(0x31, b"ARTICLE TEST\tLOCBIE,B10.0%100.00\t100.00*1"), INCONNU)  # taux faux
         self.assertEqual(self.mcf.donnees(0x31, b"ARTICLE TEST\tLOCBIE,B18.0%90.00\t100.00*1"), INCONNU)  # montant faux
         self.mcf.donnees(0x31, self.ARTICLE)
-        self.assertEqual(self.mcf.donnees(0x35, b"M102.00"), INCONNU)  # mobile money
-        self.assertEqual(self.mcf.donnees(0x35, b"E50.00"), INCONNU)  # paiement partiel
-        self.mcf.donnees(0x35, b"E52.00")
+        self.assertEqual(self.mcf.donnees(0x35, b"V102.00"), INCONNU)  # virement : jamais essayé
+        self.assertEqual(self.mcf.donnees(0x35, b"E150.00"), INCONNU)  # excédent : jamais vu
         self.assertEqual(self.mcf.donnees(0x38, b"99.00"), INCONNU)  # MV faux
 
-    def test_deux_articles_tva_par_groupe(self):
-        # 🔍 généralisation : deux groupes, PSVB sur les seuls biens
+    def test_facture_du_28_a_14h44(self):
+        # ESSAI-0009 : un bien B, un service C ; PSVB sur les deux ; reste dû en négatif ; montant négatif accepté ;
+        # certifiée alors qu'elle n'était pas soldée
+        self.mcf = FauxMCF(variante="FIS")
+        self.mcf.ventes, self.mcf.tc = 1, 3
+        self.mcf.donnees(0xC3, self.C3)
+        self.assertEqual(self.mcf.donnees(0xC0, b"1,Essai,{IFU},FV,TTC,ISF-ESSAI,ESSAI-0009,A"),
+                         b"2,4,CLIENT TEST,,,70123456,client@example.com,")
+        self.assertEqual(self.mcf.donnees(0x31, self.ARTICLE), b"100.0,84.75,15.25,0.0")
+        self.assertEqual(self.mcf.donnees(0x31, b"POSE TEST\tLOCSER,C10.0%110.00\t110.00*1"), b"110.0,100.0,10.0,0.0")
+        self.assertEqual(self.mcf.donnees(0x33, b""), b"214.2,0.0,100.0,110.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,"
+                         b"0.0,0.0,0.0,0.0,0.0,15.25,10.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,4.2,0.0")
+        self.assertEqual(self.mcf.donnees(0x35, b"M100.00"), b"R-114.2")
+        self.assertEqual(self.mcf.donnees(0x35, b"E-114.20"), b"R-228.4")
+        self.assertEqual(self.mcf.donnees(0x38, b"214.20").split(b",")[:3], [b"2", b"4", b"FV"])
+
+    def test_paiement_en_deux_fois_solde(self):
         self.ouvrir()
-        self.assertEqual(self.mcf.donnees(0x31, b"PAIN\tLOCBIE,A0.0%50.00\t25.00*2"), b"50.0,50.0,0.0,0.0")
-        self.assertEqual(self.mcf.donnees(0x31, b"POSE\tLOCSER,C10.0%110.00\t110.00"), b"110.0,100.0,10.0,0.0")
-        f = self.mcf.donnees(0x33, b"").split(b",")
-        self.assertEqual((f[0], f[1], f[3], f[19], f[33]), (b"161.0", b"50.0", b"110.0", b"10.0", b"1.0"))
+        self.mcf.donnees(0x31, self.ARTICLE)
+        self.assertEqual(self.mcf.donnees(0x35, b"M50.00"), b"R-52.0")
+        self.assertEqual(self.mcf.donnees(0x35, b"E52.00"), b"R0")
 
 
 class Liaison(unittest.TestCase):

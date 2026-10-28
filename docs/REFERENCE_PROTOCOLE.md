@@ -128,18 +128,26 @@ le chemin du message ; à vérifier par un 33 sur une facture neuve sans 36).
 
 Sans donnée. Réponse à 35 champs : total à payer, 16 montants TTC des groupes A–P, 16 TVA des groupes A–P, **PSVB**, 🔍 taxe
 spécifique. Pour l'article ci-dessus : `102.0` = 100 TTC + 2.0 de PSVB (catégorie A, 2 % du TTC, 📜 SFE §6.10) ; B `100.0` ; TVA B
-`15.25`. Sans article : `E:Veuillez ajouter le produit en premier` (avec point final après une 36).
+`15.25`. ✅ Le PSVB porte sur **toutes** les lignes, services compris : bien B 100 + service `LOCSER` C 110 → TVA C `10.0`,
+PSVB `4.2`, total `214.2`. Sans article : `E:Veuillez ajouter le produit en premier` (avec point final après une 36).
 
 ### 35, paiement : ✅ 2026-10-28
 
-`{mode}{montant}` : `E102.00` → `R0` (`R` + reste). 📖 Modes (RDC, Bénin) : `E` espèces, `V` virement, `C` carte, `M` mobile, `D` chèque,
-`A` autre ; seul `E` essayé. Sans article, vide : `E:Le montant payé est suffisant`.
+`{mode}{montant}` : `E102.00` → `R0`. **Le reste dû s'écrit en négatif** : `M100.00` sur 214.2 → `R-114.2`.
+Modes essayés : `E` espèces, `M` mobile money (✅ 2026-10-28). 📖 Autres (RDC, Bénin) : `V` virement, `C` carte, `D` chèque,
+`A` autre. Sans article, vide : `E:Le montant payé est suffisant`.
+
+⚠ ✅ **L'appareil ne contrôle pas les paiements** : un montant négatif passe (`E-114.20` → `R-228.4`), et le 38 certifie une
+facture non soldée (ESSAI-0009, 2026-10-28 14:45, par une erreur du client d'essai). Le logiciel de facturation doit
+refuser lui-même tout paiement nul ou négatif, et ne lancer le 38 qu'après un `R0`.
 
 ### 38, normalisation : ✅ 2026-10-28
 
 **Une seule donnée, `MV`** (le total à payer du 33) : `102.00` accepté. Avec une virgule (`102.00,15.25`, `102.0,15.25`, `102,15.25`,
 trois champs) : `E:MV n'est pas un nombre valide.` (la chaîne entière est lue comme MV). Avant 35 : `E:La commande 35 doit être
-soumise en premier.` Vide, sans article : `E:Aucune donnée valide n'a été reçue`.
+soumise en premier.` Vide, sans article : `E:Aucune donnée valide n'a été reçue`. ✅ Le 38 ne vérifie pas que la facture est
+soldée (voir 35). 🔍 Un C3 envoyé 5 s après un 38 accepté a reçu un NAK, facture pourtant close (C1 suivant : statut normal) :
+l'appareil semble occupé un moment après la clôture.
 
 Réponse à 8 champs : compteur de factures de vente, compteur total, type (`FV`), date `AAAAMMJJhhmmss`, `{NIM}`, `{IFU}`,
 **signature (24 caractères)**, FN. Valeurs réelles dans `appareil/brut/2026-10-28_seance.txt` (hors dépôt).
