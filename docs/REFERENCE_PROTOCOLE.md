@@ -162,8 +162,9 @@ Mentions à imprimer (📜 note 0887 §2.10.3–2.10.4), tirées de cette répon
 
 ### Annulation
 
-C1, C2 ou un rallumage annulent une facture ouverte. 📖 RDC : `38` avec `C` → `E:ANNULEE` ; ici, sur une facture sans 35,
-réponse `E:La commande 35 doit être soumise en premier.` : ❓ non tranché.
+✅ **`38` avec `C`, après le 35 → `E:ANNULEE`** (ESSAI-0010, 2026-10-28 14:56) : la facture est fermée **sans être comptée**
+(C1 suivant : compteurs inchangés, statut normal). Même forme qu'en RDC. Avant le 35 : `E:La commande 35 doit être soumise en
+premier.` ; une facture non payée s'annule par C1, C2 ou un rallumage (non comptée non plus).
 
 ## 6. États (✅)
 

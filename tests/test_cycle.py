@@ -32,8 +32,8 @@ class Etapes(unittest.TestCase):
         self.assertEqual(e[5][2], "M100.00")
         self.assertEqual(e[6][2]({"du": 114.2}), "E114.20")
 
-    def test_annulation_finit_sur_la_sonde(self):
-        self.assertEqual(etapes("annulation", "X")[-1], ("sonde", 0x38, "C"))
+    def test_annulation_finit_par_38_c(self):
+        self.assertEqual(etapes("annulation", "X")[-1], ("annulation", 0x38, "C"))
 
 
 class AuJumeau(unittest.TestCase):
@@ -43,6 +43,13 @@ class AuJumeau(unittest.TestCase):
         self.assertIn("article 31 'ARTICLE TEST\\tLOCBIE,B18.0%100.00\\t100.00*1' -> 100.0,84.75,15.25,0.0", sortie)
         self.assertIn("paiement 35 'E102.00' -> R0", sortie)
         self.assertIn("normalisation 38 '102.00' -> accepté : 8 champs, compteurs 1/3 FV", sortie)
+
+    def test_annulation_apres_paiement_non_comptee(self):
+        mcf = FauxMCF(variante="FIS")
+        code, sortie = lancer("--scenario", "annulation", "--fn", "ESSAI-0010", "--jumeau", mcf=mcf)
+        self.assertEqual(code, 0)
+        self.assertIn("annulation 38 'C' -> E:ANNULEE", sortie)
+        self.assertEqual((mcf.ventes, mcf.tc, mcf.ouverte), (0, 2, False))
 
     def test_la_cloture_ne_montre_ni_nim_ni_ifu_ni_signature(self):
         code, sortie = lancer("--scenario", "simple", "--fn", "ESSAI-0009", "--jumeau")

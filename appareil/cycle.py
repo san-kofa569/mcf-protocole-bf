@@ -13,7 +13,8 @@ Scénarios :
   simple      un bien en groupe B, payé en espèces (la facture du 28 octobre) ;
   deux        un bien (B, 18 %) et un service (C, 10 %), payés en mobile money puis en espèces pour le reste :
               plusieurs lignes, PSVB sur un service, mode M, paiement partiel ;
-  annulation  un bien payé, puis 38 `C` (forme d'annulation de la RDC) : sonde, la réponse arrête le scénario.
+  annulation  un bien payé, puis 38 `C` : `E:ANNULEE`, facture non comptée (prouvé le 2026-10-28, 14:56).
+              Sans 35, le 38 `C` répond « La commande 35 doit être soumise en premier. » : avant paiement, C1 annule.
 
 Usage :
   python3 -m appareil.cycle --scenario simple --fn ESSAI-0009 --liste
@@ -67,7 +68,7 @@ def etapes(scenario, fn):
     if scenario == "annulation":
         return debut + [("article", 0x31, BIEN), ("sous-total", 0x33, ""),
                         ("paiement", 0x35, lambda e: "E" + montant(e["total"])),
-                        ("sonde", 0x38, "C")]
+                        ("annulation", 0x38, "C")]
     raise ValueError(scenario)
 
 
@@ -105,7 +106,7 @@ def jouer(scenario, fn, envoyer, delai=0.0, tracer=print):
         if cmd == 0x35 and not (re.fullmatch(r"[A-Z]\d+\.\d{2}", d) and float(d[1:]) > 0):
             tracer("%s %02X %r : ARRÊT avant envoi, paiement nul ou négatif." % (nom, cmd, d))
             return 1
-        if cmd == 0x38 and nom != "sonde" and etat.get("du") != 0:
+        if cmd == 0x38 and d != "C" and etat.get("du") != 0:
             tracer("%s %02X %r : ARRÊT avant envoi, la facture n'est pas soldée (reste %s)." % (nom, cmd, d, etat.get("du")))
             return 1
         r, motif = lire(envoyer(cmd, d))
@@ -113,9 +114,7 @@ def jouer(scenario, fn, envoyer, delai=0.0, tracer=print):
             tracer("%s %02X %r : ARRÊT, %s" % (nom, cmd, d, motif))
             return 1
         tracer("%s %02X %r -> %s" % (nom, cmd, d, montrer(cmd, r)))
-        if nom == "sonde":
-            return 1
-        if not re.fullmatch(FORMES[cmd], r):
+        if not re.fullmatch("E:ANNULEE" if (cmd, d) == (0x38, "C") else FORMES[cmd], r):
             tracer("ARRÊT : réponse inattendue ; la facture reste ouverte (C1 l'annule).")
             return 1
         if cmd == 0x33:

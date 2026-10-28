@@ -167,3 +167,15 @@ Captures : `appareil/brut/2026-10-28_seance.txt` (hors dépôt).
 - Client corrigé : `R-x` = x dû ; aucun paiement nul ou négatif ; 38 seulement après `R0`. Jumeau mis à jour (PSVB sur
   toutes les lignes, mode M, reste négatif, 38 sans contrôle du solde).
 - 🔍 NAK au C3 5 s après un 38 : appareil occupé après la clôture ; la sonde d'annulation est à relancer après une pause.
+
+## 10. Annulation (14:56)
+
+| Heure | Trame | Réponse |
+|---|---|---|
+| 14:56:00 | C3, puis C0 `…,ESSAI-0010,A` | `R` ; `3,5,CLIENT TEST,…` |
+| 14:56:06 | 31 bien B, 33, 35 `E102.00` | `100.0,84.75,15.25,0.0` ; total `102.0` ; `R0` |
+| 14:56:16 | **38 `C`** | **`E:ANNULEE`** |
+| 14:57:15 | C1 | compteurs `4,2,0` inchangés, statut normal |
+
+- ✅ Annulation d'une facture payée : `38 C`, non comptée. Le NAK de 14:45 venait bien du moment (5 s après un 38) :
+  relancée 11 minutes plus tard, la même séquence passe.

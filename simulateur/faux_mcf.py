@@ -138,6 +138,9 @@ class FauxMCF:
         total = self.montants()[0]
         if not self.paiements:
             return "E:La commande 35 doit être soumise en premier.".encode()  # 🔍 vu sur une facture sans article
+        if data == b"C":
+            self.redemarrer()  # 2026-10-28 14:56 : annulée après le 35, non comptée (C1 : compteurs inchangés)
+            return b"E:ANNULEE"
         # 2026-10-28 14:45 : une facture non soldée (reste -228.4) a été certifiée : aucun contrôle du paiement
         if b"," in data:
             return "E:MV n'est pas un nombre valide.".encode()  # 5 formes à virgule, 2026-10-28

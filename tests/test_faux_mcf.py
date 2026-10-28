@@ -272,6 +272,15 @@ class CycleFisNano(unittest.TestCase):
         self.assertEqual(self.mcf.donnees(0x35, b"E-114.20"), b"R-228.4")
         self.assertEqual(self.mcf.donnees(0x38, b"214.20").split(b",")[:3], [b"2", b"4", b"FV"])
 
+    def test_38_c_apres_le_35_annule_sans_compter(self):
+        # 2026-10-28 14:56 : ESSAI-0010 payée puis annulée ; C1 suivant : compteurs inchangés, statut normal
+        self.ouvrir()
+        self.mcf.donnees(0x31, self.ARTICLE)
+        self.assertEqual(self.mcf.donnees(0x38, b"C"), "E:La commande 35 doit être soumise en premier.".encode())
+        self.mcf.donnees(0x35, b"E102.00")
+        self.assertEqual(self.mcf.donnees(0x38, b"C"), b"E:ANNULEE")
+        self.assertEqual((self.mcf.ventes, self.mcf.tc, self.mcf.ouverte), (0, 2, False))
+
     def test_paiement_en_deux_fois_solde(self):
         self.ouvrir()
         self.mcf.donnees(0x31, self.ARTICLE)
