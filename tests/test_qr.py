@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from contextlib import redirect_stdout
 
-from appareil.qr import comparer, contenu, images, main, reponse_38, variante
+from appareil.qr import comparer, contenu, images, main, manuel, reponse_38, variante
 
 # valeurs fictives, à la forme de l'appareil
 R38 = "1,3,FV,20261028113101,XX99999999-1,99999999Z,ABCDEFGHIJKLMNOPQRSTUV23,ESSAI-0008"
@@ -51,6 +51,12 @@ try:
     QRCODE = True
 except ImportError:
     QRCODE = False
+
+
+class Manuel(unittest.TestCase):
+    def test_formes_de_l_application(self):
+        # placeholders de l'application : XXXX-XXXX-XXXX-XXXX-XXXX-XXXX et XX12345678-123
+        self.assertEqual(manuel(R38), ("ABCD-EFGH-IJKL-MNOP-QRST-UV23", "XX99999999-1"))
 
 
 class Variantes(unittest.TestCase):

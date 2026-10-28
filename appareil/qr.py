@@ -18,6 +18,10 @@ L'appareil n'affiche ni n'imprime de QR (reçu d'ESSAI-0008, 2026-10-28). Preuve
 une facture de la capture, une image par variante dans appareil/brut/qr/ (hors dépôt) ; on les scanne une à une.
 
   python3 -m appareil.qr --images --capture appareil/brut/2026-10-28_seance.txt --numero 1
+
+La vérification manuelle de l'application demande le code SECeF/DGI au format `XXXX-XXXX-XXXX-XXXX-XXXX-XXXX` (la
+signature en six groupes de 4) et le NIM au format `XX12345678-123` (l'identifiant de machine du 38). --manuel les
+écrit dans le terminal de l'opérateur, à taper dans l'application ; ne jamais les coller ailleurs.
 """
 import argparse
 import os
@@ -69,6 +73,12 @@ def variante(lettre, reponse):
     return corps if lettre == "C" else "F;" + corps
 
 
+def manuel(reponse):
+    """(code SECeF/DGI, NIM) au format de la vérification manuelle de l'application officielle."""
+    f = reponse.split(",")
+    return "-".join(f[6][i:i + 4] for i in range(0, 24, 4)), f[4]
+
+
 def images(reponse, dossier):
     """Une image PNG par variante dans `dossier` ; rend [(lettre, chemin, description)]."""
     import qrcode
@@ -103,17 +113,23 @@ def main(argv=None):
     a = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     a.add_argument("--comparer", help="fichier du QR scanné (une ligne)")
     a.add_argument("--images", action="store_true", help="écrire une image par variante dans appareil/brut/qr/")
+    a.add_argument("--manuel", action="store_true",
+                   help="écrire le code SECeF/DGI et le NIM à taper dans l'application (terminal seulement)")
     a.add_argument("--dossier", default=os.path.join("appareil", "brut", "qr"))
     a.add_argument("--capture", required=True, help="capture où se trouve la réponse du 38")
     a.add_argument("--numero", required=True, help="numéro de la facture dans son type")
     a.add_argument("--type", default="FV")
     o = a.parse_args(argv)
-    if o.images:
+    if o.images or o.manuel:
         with open(o.capture, encoding="utf-8", errors="replace") as f:
             r = reponse_38(f.read().splitlines(), o.numero, o.type)
         if r is None:
             print("réponse du 38 de la facture %s n°%s introuvable dans la capture" % (o.type, o.numero))
             return 1
+        if o.manuel:
+            code, nim = manuel(r)
+            print("À taper dans l'application, à ne coller nulle part :\n  code SECeF/DGI : %s\n  NIM : %s" % (code, nim))
+            return 0
         for lettre, chemin, description in images(r, o.dossier):
             print("%s  %s  — %s" % (lettre, chemin, description))
         print("Scanner chacune avec l'application « FEC Burkina-Faso » et noter sa réponse.")

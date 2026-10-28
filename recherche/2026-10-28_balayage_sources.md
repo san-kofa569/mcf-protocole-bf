@@ -248,3 +248,7 @@ Captures : `appareil/brut/2026-10-28_seance.txt` (hors dépôt).
 - Application officielle « FEC Burkina-Faso » (`verificationfec.apps.dgi.bf`, Play Store ; compte par e-mail) : vérifie une
   facture en scannant son QR. Même forme d'identifiant qu'au Bénin (`mecefbenin.apps.impots.bj`). `appareil/qr.py --images`
   fabrique quatre variantes du QR d'ESSAI-0008 à lui présenter.
+- Application « FEC Burkina-Faso », écran « Vérifier » (photo) : scan du QR, ou vérification manuelle par **code SECeF/DGI
+  `XXXX-XXXX-XXXX-XXXX-XXXX-XXXX`** et **NIM `XX12345678-123`** : ces deux éléments suffisent à vérifier une facture ;
+  le QR les contient donc au moins. L'étiquette à QR collée sur l'appareil porte son numéro de série (le NIM) : ce n'est
+  pas le QR d'une facture. `appareil/qr.py --manuel` écrit, pour une facture de la capture, les deux valeurs à taper.

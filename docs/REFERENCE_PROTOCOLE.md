@@ -168,8 +168,10 @@ la RDC) lève le blocage et annule une facture restée ouverte. Exception vue : 
 Réponse à 8 champs : compteur de factures de vente, compteur total, type (`FV`), date `AAAAMMJJhhmmss`, `{NIM}`, `{IFU}`,
 **signature (24 caractères)**, FN. Valeurs réelles dans `appareil/brut/2026-10-28_seance.txt` (hors dépôt).
 
-Mentions à imprimer (📜 note 0887 §2.10.3–2.10.4), tirées de cette réponse : **code SECeF** = la signature ;
-**identificateur de machine** `(NIM)-(ACNT)` = le 5e champ tel quel (`{NIM}-1` : ACNT = compteur d'activation) ;
+Mentions à imprimer (📜 note 0887 §2.10.3–2.10.4), tirées de cette réponse : **code SECeF** = la signature, imprimée
+`XXXX-XXXX-XXXX-XXXX-XXXX-XXXX` (✅ forme demandée par la vérification manuelle de l'application officielle de la DGI) ;
+**identificateur de machine** `(NIM)-(ACNT)` = le 5e champ tel quel (`{NIM}-1` : ACNT = compteur d'activation ; l'application
+officielle le demande sous la forme `XX12345678-123`) ;
 **compteurs** `(CPIT)/(FDOC) (ITL)` = champs 1, 2 et 3 (`1/3 FV` : 1re facture de vente, 3 transactions) ;
 **date et heure du MCF** = le 4e champ ; **code QR** « au format défini par l'Administration » : ❓ non publié, et le reçu
 de l'application fiscale n'en montre pas (2026-10-28) : le logiciel de facturation le construit. 🔍 **Hypothèse** : le
