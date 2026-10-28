@@ -132,8 +132,26 @@ class EssaisRestants(unittest.TestCase):
         self.assertEqual(e[3][2], "POSE^x2c; TEST\tIMPSER,C10.0%110.00\t110.00*1")
         self.assertEqual([e[i][2]({"total": 210.0, "du": 70.0}) for i in (5, 6, 7)], ["V70.00", "C70.00", "D70.00"])
 
+    def test_ht_ligne_acceptee_puis_33_jamais_vu(self):
+        code, sortie = lancer("--scenario", "ht", "--fn", "X", "--jumeau")
+        self.assertEqual(code, 1)
+        self.assertIn("article 31 'ARTICLE TEST\\tLOCBIE,B18.0%118.00\\t100.00*1' -> 118.0,100.0,18.0,0.0", sortie)
+        self.assertIn("sous-total 33 '' -> E:??", sortie)
+
+    def test_credit_certifie_comme_essai_0012(self):
+        code, sortie = lancer("--scenario", "credit", "--fn", "ESSAI-0012", "--jumeau")
+        self.assertEqual(code, 0)
+        self.assertIn("credit 35 'A102.00' -> R0", sortie)
+
+    def test_c3_refuse_en_facture_ouverte_l_indique(self):
+        mcf = FauxMCF(variante="FIS")
+        mcf.donnees(0xC0, b"1,Essai,{IFU},FV,HT,ISF-ESSAI,ESSAI-0011,A")
+        code, sortie = lancer("--scenario", "credit", "--fn", "X", "--jumeau", mcf=mcf)
+        self.assertEqual(code, 1)
+        self.assertIn("NAK, statut a2 80 80 80 80 80 — une facture est sans doute restée ouverte", sortie)
+
     def test_au_jumeau_chacun_s_arrete_au_jamais_vu(self):
-        for scenario, arret in (("ht", "article 31"), ("credit", "credit 35"), ("modes", "service 31")):
+        for scenario, arret in (("modes", "service 31"),):
             code, sortie = lancer("--scenario", scenario, "--fn", "X", "--jumeau")
             self.assertEqual(code, 1, scenario)
             ligne = next(l for l in sortie.splitlines() if "E:??" in l)

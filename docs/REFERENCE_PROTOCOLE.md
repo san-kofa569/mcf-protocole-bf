@@ -107,6 +107,10 @@ L'exemple accepté ci-dessous met donc le nom à la place de l'IFU ; la forme r�
 `nom[⏎code]⇥TYPE,G{taux}%{montant}⇥{prix}*{qté}` — accepté : `ARTICLE TEST⇥LOCBIE,B18.0%100.00⇥100.00*1`.
 Réponse : `100.0,84.75,15.25,0.0` (TTC, HT, TVA, 🔍 taxe spécifique).
 
+✅ **En mode HT** (C0 `…,HT,…`), le montant est **le TTC de la ligne** et le prix est **HT** :
+`ARTICLE TEST⇥LOCBIE,B18.0%118.00⇥100.00*1` → `118.0,100.0,18.0,0.0` (TVA = HT × taux). Montant = prix × quantité
+(`%100.00⇥100.00*1`) : `E:Mismatch de montant` (2026-10-28 15:42–15:46, ESSAI-0011). ❓ 33 en HT jamais vu.
+
 Ordre des contrôles, du premier au dernier (✅ 2026-10-28, environ 110 trames) :
 
 | Contrôle | Message |
@@ -140,8 +144,8 @@ PSVB `4.2`, total `214.2`. Sans article : `E:Veuillez ajouter le produit en prem
 ### 35, paiement : ✅ 2026-10-28
 
 `{mode}{montant}` : `E102.00` → `R0`. **Le reste dû s'écrit en négatif** : `M100.00` sur 214.2 → `R-114.2`.
-Modes essayés : `E` espèces, `M` mobile money (✅ 2026-10-28). 📖 Autres (RDC, Bénin) : `V` virement, `C` carte, `D` chèque,
-`A` autre. Sans article, vide : `E:Le montant payé est suffisant`.
+Modes essayés : `E` espèces, `M` mobile money, **`A` pour une vente à crédit** (`A102.00` → `R0`, ESSAI-0012 certifiée)
+(✅ 2026-10-28). 📖 Autres (RDC, Bénin) : `V` virement, `C` carte, `D` chèque. Sans article, vide : `E:Le montant payé est suffisant`.
 
 ⚠ ✅ **L'appareil ne contrôle pas les paiements** : un montant négatif passe (`E-114.20` → `R-228.4`), et le 38 certifie une
 facture non soldée (ESSAI-0009, 2026-10-28 14:45, par une erreur du client d'essai). Le logiciel de facturation doit

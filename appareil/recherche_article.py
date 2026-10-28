@@ -309,12 +309,35 @@ def psvb_rdc():
         yield "psvb/" + nom, "\t".join((n, milieu, prix))
 
 
+ATTENDU_MONTANT = "E:Mismatch de montant"
+
+
+def ht():
+    """(nom, données) : la ligne d'article dans une facture ouverte en HT (C0 `…,FV,HT,…`, ESSAI-0011, 2026-10-28).
+
+    `ARTICLE TEST⇥LOCBIE,B18.0%100.00⇥100.00*1`, accepté en TTC, répond « Mismatch de montant » en HT : le montant
+    après `%` ou le prix ne s'entend pas de la même façon. Montant TTC et prix HT d'abord, puis les voisins ; le
+    groupe A (taux nul, HT = TTC) en dernier : s'il passe seul, le désaccord tient à la conversion HT/TTC.
+    """
+    n = "ARTICLE TEST"
+    formes = (
+        ("montant-ttc", "LOCBIE,B18.0%118.00", "100.00*1"),
+        ("tout-ttc", "LOCBIE,B18.0%118.00", "118.00*1"),
+        ("prix-ttc", "LOCBIE,B18.0%100.00", "118.00*1"),
+        ("montant-ttc-sans-qte", "LOCBIE,B18.0%118.00", "100.00"),
+        ("montant-tva", "LOCBIE,B18.0%18.00", "100.00*1"),
+        ("groupe-A", "LOCBIE,A0.0%100.00", "100.00*1"),
+    )
+    for nom, milieu, prix in formes:
+        yield "ht/" + nom, "\t".join((n, milieu, prix))
+
+
 GRILLES = {"nombres": grille, "gabarits": gabarits, "photo": photo, "anciens": anciens,
            "groupes": groupes, "nombres2": nombres2, "psvb": psvb, "rdc": rdc, "taxe": taxe, "taxe2": taxe2,
-           "groupes_rdc": groupes_rdc, "quantite": quantite, "psvb_rdc": psvb_rdc}
+           "groupes_rdc": groupes_rdc, "quantite": quantite, "psvb_rdc": psvb_rdc, "ht": ht}
 # Le message qui n'arrête pas la grille : celui de format, sauf pour les grilles qui partent d'une structure lue.
 CONNU = {"taxe": ATTENDU_TAXE, "taxe2": ATTENDU_TAXE, "groupes_rdc": ATTENDU_TAXE, "quantite": ATTENDU_TAXE,
-         "psvb_rdc": ATTENDU_TAXE}
+         "psvb_rdc": ATTENDU_TAXE, "ht": ATTENDU_MONTANT}
 
 
 def main(argv=None, mcf=None):
@@ -335,7 +358,8 @@ def main(argv=None, mcf=None):
                         "taxe2 : LOCBIE et la sous-partie X%%Y lue autrement (groupe%%taux, taxe nulle, TA…TP) ; "
                         "groupes_rdc : les groupes D, E, G à P en structure RDC, au taux de C1 ; "
                         "quantite : la structure RDC avec *qté explicite, puis les taxes arrondies (§6.7) ; "
-                        "psvb_rdc : la structure RDC et le PSVB ou la taxe spécifique")
+                        "psvb_rdc : la structure RDC et le PSVB ou la taxe spécifique ; "
+                        "ht : la ligne d'article dans une facture ouverte en HT (arrêt à tout autre message que « Mismatch »)")
     a.add_argument("--depuis", type=int, default=1, help="numéro affiché de la première trame (1 = début)")
     a.add_argument("--delai", type=float, default=DELAI)
     a.add_argument("--plafond", type=int, default=PLAFOND)

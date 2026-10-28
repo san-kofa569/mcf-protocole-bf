@@ -4,7 +4,7 @@ from contextlib import redirect_stdout
 
 from appareil.recherche_article import (
     ATTENDU, ATTENDU_TAXE, JETONS, NOMBRES, SEPARATEURS, TAUX_GROUPES, anciens, gabarits, grille, groupes,
-    groupes_rdc, main, nombres2, photo, psvb, psvb_rdc, quantite, rdc, taxe, taxe2,
+    groupes_rdc, ht, main, nombres2, photo, psvb, psvb_rdc, quantite, rdc, taxe, taxe2,
 )
 from appareil.recherche_bornee import PLAFOND, classer
 from simulateur.faux_mcf import E_FORMAT, reponse
@@ -361,6 +361,21 @@ class PsvbRdc(unittest.TestCase):
         code, sortie = lancer("--jumeau", "--grille", "psvb_rdc")
         self.assertEqual(code, 0)
         self.assertIn("terminé : 12 trames, « E:La taxe est incorrecte! » partout.", sortie)
+
+
+class Ht(unittest.TestCase):
+    def test_six_formes_le_groupe_a_en_dernier(self):
+        g = list(ht())
+        self.assertEqual(len(g), 6)
+        self.assertEqual(g[0], ("ht/montant-ttc", "ARTICLE TEST\tLOCBIE,B18.0%118.00\t100.00*1"))
+        self.assertEqual(g[-1][0], "ht/groupe-A")
+        self.assertNotIn("ARTICLE TEST\tLOCBIE,B18.0%100.00\t100.00*1", {d for _, d in g})
+
+    def test_le_mismatch_ne_l_arrete_pas(self):
+        mcf = Jumeau31({d.encode(): b"E:Mismatch de montant" for _, d in ht()})
+        code, sortie = lancer("--jumeau", "--grille", "ht", mcf=mcf)
+        self.assertEqual(code, 0)
+        self.assertIn("terminé : 6 trames, « E:Mismatch de montant » partout.", sortie)
 
 
 class Commande(unittest.TestCase):

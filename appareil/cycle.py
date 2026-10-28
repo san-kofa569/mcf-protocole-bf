@@ -15,8 +15,9 @@ Scénarios :
               plusieurs lignes, PSVB sur un service, mode M, paiement partiel ;
   annulation  un bien payé, puis 38 `C` : `E:ANNULEE`, facture non comptée (prouvé le 2026-10-28, 14:56).
               Sans 35, le 38 `C` répond « La commande 35 doit être soumise en premier. » : avant paiement, C1 annule.
-  ht          un bien en mode HT (C0 `HT`), le mode par défaut du module de facturation : jamais essayé ;
-  credit      un bien vendu à crédit : 35 en mode `A` (📖 RDC : crédit, « autre ») pour le total ;
+  ht          un bien en mode HT (C0 `HT`) : la 31 porte le montant TTC de la ligne et le prix HT
+              (`B18.0%118.00⇥100.00*1` → `118.0,100.0,18.0,0.0`, 2026-10-28 15:46) ; 33 en HT jamais vu ;
+  credit      un bien vendu à crédit : 35 en mode `A` pour le total (`A102.00` → `R0`, ESSAI-0012 certifiée) ;
   modes       PSVB `D` (taux 0), un bien et un service `IMPSER` dont la désignation porte une virgule échappée
               (`^x2c;`, 📖 RDC), payés en trois modes `V`, `C`, `D` (📖) ;
   avoir       avoir de correction (FA, nature COR) d'une facture « deux » : C0 `op,nom,IFU,FA,COR,RN,TTC,ISF,FN,PSVB`
@@ -50,7 +51,9 @@ CLIENT = "PP,CLIENT TEST,,,70123456,client@example.com,"
 BIEN = "ARTICLE TEST\tLOCBIE,B18.0%100.00\t100.00*1"
 SERVICE = "POSE TEST\tLOCSER,C10.0%110.00\t110.00*1"
 SERVICE_IMPORTE = "POSE^x2c; TEST\tIMPSER,C10.0%110.00\t110.00*1"  # « POSE, TEST » : virgule échappée
+BIEN_HT = "ARTICLE TEST\tLOCBIE,B18.0%118.00\t100.00*1"  # en HT : montant TTC de la ligne, prix HT
 FORMAT = "E:Erreur de format des données ou incompatibilité"
+OUVERTE = " — une facture est sans doute restée ouverte (C3 refusé pendant une facture) : un C1 l'annule"
 FORMAT_RN = "E:Erreur de format RN!"
 # C0 d'avoir (📖 RDC `type,nature,référence` à la place du type ; nature 📜 COR, RAN, RAM, RRR). RN prouvée le
 # 2026-10-28 : identifiant de l'appareil tel qu'il l'écrit (NIM-ACNT), tiret, TC de la facture d'origine. Refusées :
@@ -89,7 +92,7 @@ def etapes(scenario, fn, origine=("ESSAI-0009", "2", "4")):
                         ("normalisation", 0x38, lambda e: montant(e["total"]))]
     if scenario == "ht":
         return [("client", 0xC3, CLIENT), ("ouverture", 0xC0, "1,Essai,{IFU},FV,HT,ISF-ESSAI,%s,A" % fn),
-                ("article", 0x31, BIEN), ("sous-total", 0x33, ""),
+                ("article", 0x31, BIEN_HT), ("sous-total", 0x33, ""),
                 ("paiement", 0x35, lambda e: "E" + montant(e["total"])),
                 ("normalisation", 0x38, lambda e: montant(e["total"]))]
     if scenario == "credit":
@@ -148,7 +151,7 @@ def ouvrir(nom, cmd, formes, envoyer, delai, tracer):
             time.sleep(delai)
         r, motif = lire(envoyer(0xC3, CLIENT))
         if r != "R":
-            tracer("client C3 %r : ARRÊT, %s" % (CLIENT, motif or r))
+            tracer("client C3 %r : ARRÊT, %s%s" % (CLIENT, motif or r, OUVERTE if "statut a2" in motif else ""))
             return False
         if delai:
             time.sleep(delai)
@@ -201,7 +204,8 @@ def jouer(scenario, fn, envoyer, delai=0.0, tracer=print, origine=("ESSAI-0009",
             return 1
         r, motif = lire(envoyer(cmd, d))
         if r is None:
-            tracer("%s %02X %r : ARRÊT, %s" % (nom, cmd, d, motif))
+            tracer("%s %02X %r : ARRÊT, %s%s" % (nom, cmd, d, motif,
+                                                 OUVERTE if cmd == 0xC3 and "statut a2" in motif else ""))
             return 1
         tracer("%s %02X %r -> %s" % (nom, cmd, d, montrer(cmd, r)))
         if not re.fullmatch("E:ANNULEE" if (cmd, d) == (0x38, "C") else FORMES[cmd], r):

@@ -123,8 +123,21 @@ class FauxMCF:
         """
         m = re.fullmatch(rb"([A-P])([0-9.]+)%([0-9.]+)", tx)
         p = re.fullmatch(rb"([0-9.]+)(?:\*([0-9.]+))?", prix)
-        if not (m and p and self.ttc):
+        if not (m and p):
             return INCONNU
+        if not self.ttc:
+            # 2026-10-28 15:46 : en HT, le montant est le TTC de la ligne, le prix est HT : `B18.0%118.00⇥100.00*1` →
+            # `118.0,100.0,18.0,0.0` ; montant = prix × qté (HT) : « Mismatch de montant » ; le reste : jamais vu
+            groupe = m.group(1).decode()
+            taux = TAUX_GROUPES[ord(groupe) - 65]
+            montant, ht = float(m.group(3)), float(p.group(1)) * float(p.group(2) or 1)
+            if abs(float(m.group(2)) - taux) > 1e-9:
+                return INCONNU
+            tva = round(ht * taux / 100, 2)
+            if abs(montant - round(ht + tva, 2)) <= 0.005:
+                self.lignes.append((groupe, montant, ty)); self.articles += 1
+                return ",".join(nombre(v) for v in (montant, ht, tva, 0.0)).encode()
+            return b"E:Mismatch de montant" if abs(montant - ht) <= 0.005 else INCONNU
         groupe = m.group(1).decode()
         taux = TAUX_GROUPES[ord(groupe) - 65]
         montant, pu, qte = float(m.group(3)), float(p.group(1)), float(p.group(2) or 1)
@@ -245,11 +258,13 @@ class FauxMCF:
                 return self.article(ty, tx, parties[2])
             # forme sans type : plus de 500 refusées (09 au 15)
             return E_FORMAT
+        if cmd == 0x33 and self.ouverte and self.articles and not self.ttc:
+            return INCONNU  # sous-total d'une facture HT : jamais vu
         if cmd == 0x33 and self.ouverte and self.articles:
             total, ttc, tva, psvb = self.montants()
             return ",".join(nombre(v) for v in [total] + ttc + tva + [psvb, 0.0]).encode()
         if cmd == 0x35 and self.ouverte and self.articles:
-            m = re.fullmatch(rb"[EM](-?[0-9.]+)", data)  # espèces et mobile money essayés ; un montant négatif passe
+            m = re.fullmatch(rb"[EMA](-?[0-9.]+)", data)  # espèces, mobile money, A (crédit) essayés ; un négatif passe
             if not m:
                 return INCONNU
             self.paye += float(m.group(1)); self.paiements += 1

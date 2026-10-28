@@ -206,3 +206,16 @@ Captures : `appareil/brut/2026-10-28_seance.txt` (hors dépôt).
 - ✅ RN = identifiant de l'appareil `NIM-ACNT` + `-` + TC de la facture d'origine. ESSAI-0009, aux paiements incohérents,
   est corrigée par l'avoir AVOIR-0001 (nature COR, mêmes lignes).
 - Le cycle d'une facture et de son avoir est complet : vente, annulation, avoir.
+
+## 13. Mode HT et écran des reçus (15:42)
+
+- 15:42:53 : C0 `…,FV,HT,ISF-ESSAI,ESSAI-0011,A` → `3,6,CLIENT TEST,…` : **le mode HT est accepté**.
+- 15:42:57 : 31 `ARTICLE TEST⇥LOCBIE,B18.0%100.00⇥100.00*1` → **`E:Mismatch de montant`** : en HT, le montant ou le prix
+  ne s'entend pas comme en TTC. ESSAI-0011 reste ouverte ; les C3 suivants (scénarios `credit`, `modes`, lancés dans la
+  même seconde) : NAK `a2` (C3 pendant une facture ouverte). Grille `ht` (6 formes) pour la suite, dans ESSAI-0011.
+- Écran « Reçu de vente » de l'application fiscale (photo) : 102,00 à 11:30:46 (ESSAI-0008) avec le nuage vert,
+  214,20 (ESSAI-0009) et (-214,20) (AVOIR-0001) avec un indicateur en cours : **transmis / pas encore transmis**.
+  L'annulation (ESSAI-0010) n'y figure pas. Chaque reçu s'ouvre (`>`) : piste du code QR.
+- 15:46:19 : grille `ht`, 1re forme : `ARTICLE TEST⇥LOCBIE,B18.0%118.00⇥100.00*1` → **`118.0,100.0,18.0,0.0`** (montant TTC,
+  prix HT). ESSAI-0011 annulée ensuite par C1 : non comptée (le C0 suivant reprend `3,6`).
+- 15:46:43–59 : scénario `credit`, ESSAI-0012 : 31, 33 (102.0), **35 `A102.00` → `R0`**, 38 accepté, **`3/6 FV`**.

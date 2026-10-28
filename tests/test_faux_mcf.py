@@ -306,6 +306,19 @@ class CycleFisNano(unittest.TestCase):
         self.assertEqual(self.mcf.donnees(0x38, b"C"), b"E:ANNULEE")
         self.assertEqual((self.mcf.ventes, self.mcf.tc, self.mcf.ouverte), (0, 2, False))
 
+    def test_ht_montant_ttc_prix_ht(self):
+        # ESSAI-0011, 15:42 et 15:46 : C0 HT accepté ; montant = prix × qté refusé ; montant TTC, prix HT accepté
+        self.mcf.donnees(0xC3, self.C3)
+        self.assertEqual(self.mcf.donnees(0xC0, b"1,Essai,{IFU},FV,HT,ISF-ESSAI,ESSAI-0011,A")[:4], b"1,3,")
+        self.assertEqual(self.mcf.donnees(0x31, self.ARTICLE), b"E:Mismatch de montant")
+        self.assertEqual(self.mcf.donnees(0x31, b"ARTICLE TEST\tLOCBIE,B18.0%118.00\t100.00*1"), b"118.0,100.0,18.0,0.0")
+        self.assertEqual(self.mcf.donnees(0x33, b""), INCONNU)
+
+    def test_credit_en_mode_a(self):
+        self.ouvrir()
+        self.mcf.donnees(0x31, self.ARTICLE)
+        self.assertEqual(self.mcf.donnees(0x35, b"A102.00"), b"R0")
+
     def test_paiement_en_deux_fois_solde(self):
         self.ouvrir()
         self.mcf.donnees(0x31, self.ARTICLE)
