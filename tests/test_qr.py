@@ -46,6 +46,13 @@ class Comparer(unittest.TestCase):
         self.assertNotIn("ABCDEFGHIJ", texte)
 
 
+try:
+    import qrcode  # noqa: F401  (images seulement)
+    QRCODE = True
+except ImportError:
+    QRCODE = False
+
+
 class Variantes(unittest.TestCase):
     def test_quatre_variantes(self):
         self.assertEqual(variante("A", R38), contenu(R38))
@@ -53,6 +60,7 @@ class Variantes(unittest.TestCase):
         self.assertEqual(variante("C", R38), "XX99999999-1;ABCDEFGHIJKLMNOPQRSTUV23;99999999Z;20261028113101")
         self.assertEqual(variante("D", R38), "F;XX99999999-1;ABCD-EFGH-IJKL-MNOP-QRST-UV23;99999999Z;20261028113101")
 
+    @unittest.skipUnless(QRCODE, "bibliothèque qrcode absente")
     def test_images_ecrites_et_rien_d_affiche(self):
         with tempfile.TemporaryDirectory() as d:
             faites = images(R38, os.path.join(d, "qr"))
