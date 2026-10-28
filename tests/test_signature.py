@@ -29,6 +29,14 @@ class Signature(unittest.TestCase):
     def test_lue_dans_le_c1_qui_suit(self):
         self.assertEqual(signature(CAPTURE, "2"), SIG2)
 
+    def test_c1_apres_un_avoir_le_10e_champ_compte_toutes_les_factures(self):
+        # 16:01 : vente n°3 après l'avoir n°1 : compteurs 6,3,1 ; 10e champ = 4 (toutes factures)
+        c1 = ("XX99999999-1,99999999Z,20261028140138,6,3,1,20261028134659,FV,%s,4,102.0,"
+              "0.0,18.0,10.0,0.0,0.0,18.0,10.0,0.0,0.0,0.0,0.0,10.0,10.0,0.0,0.0,0.0,2.0,1.0,0.2,0.0" % SIG1)
+        capture = ["2026-10-28 16:01:38 envoi : 01 24 70 c1 05 30 31 3c 30 03", "données : " + c1]
+        self.assertEqual(signature(capture, "3"), SIG1)
+        self.assertIsNone(signature(capture, "4"))
+
     def test_numero_ou_type_inconnu(self):
         self.assertIsNone(signature(CAPTURE, "3"))
         self.assertIsNone(signature(CAPTURE, "1", "FA"))

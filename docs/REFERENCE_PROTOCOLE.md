@@ -109,7 +109,9 @@ Réponse : `100.0,84.75,15.25,0.0` (TTC, HT, TVA, 🔍 taxe spécifique).
 
 ✅ **En mode HT** (C0 `…,HT,…`), le montant est **le TTC de la ligne** et le prix est **HT** :
 `ARTICLE TEST⇥LOCBIE,B18.0%118.00⇥100.00*1` → `118.0,100.0,18.0,0.0` (TVA = HT × taux). Montant = prix × quantité
-(`%100.00⇥100.00*1`) : `E:Mismatch de montant` (2026-10-28 15:42–15:46, ESSAI-0011). ❓ 33 en HT jamais vu.
+(`%100.00⇥100.00*1`) : `E:Mismatch de montant` (2026-10-28 15:42–15:46, ESSAI-0011). ✅ Le 33 d'une facture HT donne
+aussi des montants TTC : `120.36` = 118 TTC + PSVB 2.36 ; groupe B `118.0`, TVA `18.0` ; 35 `E120.36` → `R0` ; 38 → `4/7 FV`
+(ESSAI-0013, 16:03).
 
 Ordre des contrôles, du premier au dernier (✅ 2026-10-28, environ 110 trames) :
 
@@ -157,7 +159,9 @@ refuser lui-même tout paiement nul ou négatif, et ne lancer le 38 qu'après un
 trois champs) : `E:MV n'est pas un nombre valide.` (la chaîne entière est lue comme MV). Avant 35 : `E:La commande 35 doit être
 soumise en premier.` Vide, sans article : `E:Aucune donnée valide n'a été reçue`. ✅ Le 38 ne vérifie pas que la facture est
 soldée (voir 35). 🔍 Un C3 envoyé 5 s après un 38 accepté a reçu un NAK, facture pourtant close (C1 suivant : statut normal) :
-l'appareil semble occupé un moment après la clôture.
+l'appareil semble occupé un moment après la clôture. ✅ Règle retenue (trois cas le 2026-10-28 : 14:45, 16:00, 16:03) :
+**après un 38 accepté, le C3 suivant reçoit un NAK `a2` jusqu'à un C1** ; un C1 en tête de chaque facture (comme l'agent de
+la RDC) lève le blocage et annule une facture restée ouverte. Exception vue : un C3 29 min après un 38, sans C1, est passé.
 
 Réponse à 8 champs : compteur de factures de vente, compteur total, type (`FV`), date `AAAAMMJJhhmmss`, `{NIM}`, `{IFU}`,
 **signature (24 caractères)**, FN. Valeurs réelles dans `appareil/brut/2026-10-28_seance.txt` (hors dépôt).
@@ -167,7 +171,8 @@ Mentions à imprimer (📜 note 0887 §2.10.3–2.10.4), tirées de cette répon
 **compteurs** `(CPIT)/(FDOC) (ITL)` = champs 1, 2 et 3 (`1/3 FV` : 1re facture de vente, 3 transactions) ;
 **date et heure du MCF** = le 4e champ ; **code QR** « au format défini par l'Administration » : ❓ non publié.
 ✅ En mode Test, la signature commence par `TESTFACT` (3 signatures sur 3), suivie de 16 caractères propres à la facture.
-✅ C1 garde la dernière facture certifiée : date (7e champ), type (8e), signature (9e), numéro (10e), montant (11e).
+✅ C1 garde la dernière facture certifiée : date (7e champ), type (8e), signature (9e), **nombre total de factures**
+(10e : ventes et avoirs, 4 après FV n°3 et FA n°1), montant (11e). Compteurs (4e à 6e) : transactions, ventes, avoirs.
 📖 RDC : réponse `P:` = renvoyer la même commande (jamais vue).
 ✅ Transmission : un C2 lancé 20 minutes après répond `3,3,{date}` (3 documents envoyés sur 3, dernier contact
 10 minutes après le 38) : la facture certifiée est partie au serveur de la DGI.

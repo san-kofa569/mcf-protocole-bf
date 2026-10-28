@@ -2,7 +2,8 @@
 
 La signature d'une facture est dans la réponse de son 38 (7e champ ; le 1er est le numéro de la facture dans
 son type) et dans celle de chaque C1 qui suit, tant qu'aucune autre n'a été certifiée (9e champ ; le 8e est le
-type, le 10e le numéro). Captures lues : celles de `trame.py` et de `cycle.py` (ligne `envoi :` puis `données :`).
+type ; le numéro dans le type est le compteur du type, 5e champ pour FV, 6e pour FA — le 10e compte toutes les
+factures, 2026-10-28 16:01). Captures lues : celles de `trame.py` et de `cycle.py` (ligne `envoi :` puis `données :`).
 N'écrit que la signature, rien d'autre ; introuvable : rien sur la sortie, code 1. Avec --nim, l'identifiant
 de l'appareil (`NIM-ACNT`, 1er champ du dernier C1 ou 5e du dernier 38), pour MCF_NIM.
 
@@ -14,6 +15,7 @@ import re
 import sys
 
 SIG = re.compile(r"[A-Z0-9]{24}")
+COMPTEUR_C1 = {"FV": 4, "FA": 5}  # place, dans C1, du compteur du type de la dernière facture
 
 
 def reponses(lignes):
@@ -35,7 +37,8 @@ def signature(lignes, numero, type_="FV"):
         f = d.split(",")
         if cmd == 0x38 and len(f) == 8 and f[0] == numero and f[2] == type_ and SIG.fullmatch(f[6]):
             trouvee = f[6]
-        elif cmd == 0xC1 and len(f) == 31 and f[9] == numero and f[7] == type_ and SIG.fullmatch(f[8]):
+        elif (cmd == 0xC1 and len(f) == 31 and f[7] == type_ and type_ in COMPTEUR_C1
+              and f[COMPTEUR_C1[type_]] == numero and SIG.fullmatch(f[8])):
             trouvee = f[8]
     return trouvee
 

@@ -81,11 +81,12 @@ class AuJumeau(unittest.TestCase):
     def test_jamais_de_paiement_negatif(self):
         e = [("client", 0xC3, CLIENT), ("reste", 0x35, "E-114.20")]
         with mock.patch("appareil.cycle.etapes", lambda s, fn: e), mock.patch.object(FauxMCF, "repondre") as r:
-            r.side_effect = lambda seq, cmd, d: __import__("simulateur.faux_mcf", fromlist=["reponse"]).reponse(seq, cmd, b"R")
+            r.side_effect = lambda seq, cmd, d: __import__("simulateur.faux_mcf", fromlist=["reponse"]).reponse(
+                seq, cmd, b",".join([b"X"] * 31) if cmd == 0xC1 else b"R")
             code, sortie = lancer("--scenario", "simple", "--fn", "X", "--jumeau")
         self.assertEqual(code, 1)
         self.assertIn("ARRÊT avant envoi, paiement nul ou négatif", sortie)
-        self.assertEqual(r.call_count, 1)  # seul le C3 est parti
+        self.assertEqual(r.call_count, 2)  # seuls le C1 de départ et le C3 sont partis
 
     def test_sans_psvb_l_arret_vient_de_la_31(self):
         mcf = FauxMCF(variante="FIS")
@@ -143,12 +144,33 @@ class EssaisRestants(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("credit 35 'A102.00' -> R0", sortie)
 
-    def test_c3_refuse_en_facture_ouverte_l_indique(self):
+    def test_le_c1_de_depart_annule_une_facture_restee_ouverte(self):
         mcf = FauxMCF(variante="FIS")
         mcf.donnees(0xC0, b"1,Essai,{IFU},FV,HT,ISF-ESSAI,ESSAI-0011,A")
         code, sortie = lancer("--scenario", "credit", "--fn", "X", "--jumeau", mcf=mcf)
-        self.assertEqual(code, 1)
-        self.assertIn("NAK, statut a2 80 80 80 80 80 — une facture est sans doute restée ouverte", sortie)
+        self.assertEqual(code, 0)
+        self.assertIn("état C1 -> état : transactions 2, ventes 0, avoirs 0", sortie)
+        self.assertNotIn("99999999Z", sortie)
+
+    def test_nak_a2_au_c3_reessaye_puis_passe(self):
+        from simulateur.faux_mcf import reponse
+        vus = []
+
+        def pousser(port, seq, d, cmd):
+            vus.append(cmd)
+            if cmd == 0xC3 and vus.count(0xC3) == 1:
+                return b"\x15" + reponse(seq, cmd, b"", b"\xa2" + b"\x80" * 5)
+            return mcf.repondre(seq, cmd, d.encode())
+        mcf = FauxMCF(variante="FIS")
+        with tempfile.TemporaryDirectory() as dossier, \
+                mock.patch.dict(os.environ, {"MCF_IFU": "99999999Z"}, clear=True), \
+                mock.patch("appareil.cycle.pousser", pousser), mock.patch("appareil.cycle.DELAI", 0.001), \
+                mock.patch("appareil.cycle.PAUSE_NAK", 0):
+            code, sortie = lancer("--scenario", "simple", "--fn", "X", "--port", "/dev/null",
+                                  "--capture", os.path.join(dossier, "c.txt"))
+        self.assertEqual(code, 0)
+        self.assertIn("client C3 : NAK a2, nouvel essai", sortie)
+        self.assertEqual(vus[:3], [0xC1, 0xC3, 0xC3])
 
     def test_au_jumeau_chacun_s_arrete_au_jamais_vu(self):
         for scenario, arret in (("modes", "service 31"),):
@@ -178,7 +200,7 @@ class Garde(unittest.TestCase):
                                       "--capture", capture)
             self.assertEqual(code, 0)
             lignes = open(capture, encoding="utf-8").read().splitlines()
-        self.assertEqual(sum(l.startswith("données : ") for l in lignes), 6)
+        self.assertEqual(sum(l.startswith("données : ") for l in lignes), 7)  # C1 de départ compris
         self.assertNotIn("99999999Z", sortie)  # l'écran reste masqué…
         self.assertTrue(any("99999999Z" in l for l in lignes))  # …la capture garde la réponse du 38
         self.assertIsNotNone(signature(lignes, "1"))

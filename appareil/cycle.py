@@ -5,6 +5,10 @@ Le cycle prouvé le 2026-10-28 (docs/REFERENCE_PROTOCOLE.md §4–5) : C3, C0 av
 la facture reste ouverte et un C1 l'annule. La réponse du 38 (NIM, IFU, signature) n'est jamais affichée :
 seulement ses compteurs et son nombre de champs.
 
+Chaque scénario commence par un C1 (état, compteurs ; une facture restée ouverte est annulée) : après un 38 accepté,
+l'appareil refuse le C3 suivant (NAK, statut `a2`) jusqu'à un C1 (2026-10-28, trois fois). Un NAK `a2` au C3 est
+encore réessayé deux fois, après une pause. Le C1 n'affiche que ses compteurs et son statut.
+
 Le 35 répond `R0` quand tout est payé, `R-114.2` quand 114.2 reste dû. L'appareil accepte un montant négatif
 et certifie au 38 une facture qui n'est pas soldée (2026-10-28, 14:44) : c'est donc ici qu'on le refuse. Aucun
 paiement nul ou négatif ne part, et le 38 ne part qu'après un `R0`.
@@ -64,7 +68,9 @@ AVOIRS = (
 C0_AVOIR = "1,Essai,{IFU},FA,COR,%s,TTC,ISF-ESSAI,%s,A"
 
 NOMBRE = r"-?\d+(?:\.\d+)?"
+PAUSE_NAK = 5.0
 FORMES = {
+    0xC1: r"[^,]*(?:,[^,]*){30}",
     0xC3: r"R",
     0xC0: r"\d+,\d+(?:,[^,]*){6}",
     0x31: r"%s(?:,%s){3}" % (NOMBRE, NOMBRE),
@@ -137,11 +143,34 @@ def lire(recu):
 
 
 def montrer(cmd, donnees):
-    """Ce qui s'affiche d'une réponse : la clôture réduite à ses compteurs."""
+    """Ce qui s'affiche d'une réponse : l'état et la clôture réduits à leurs compteurs."""
+    if cmd == 0xC1 and re.fullmatch(FORMES[0xC1], donnees):
+        f = donnees.split(",")
+        return "état : transactions %s, ventes %s, avoirs %s (NIM, IFU dans --capture)" % (f[3], f[4], f[5])
     if cmd == 0x38 and re.fullmatch(FORMES[0x38], donnees):
         f = donnees.split(",")
         return "accepté : 8 champs, compteurs %s/%s %s (NIM, IFU, signature dans --capture)" % (f[0], f[1], f[2])
     return donnees
+
+
+def client(envoyer, delai, tracer):
+    """C3 ; un NAK `a2` (appareil pas encore prêt après un 38) est réessayé deux fois après une pause."""
+    for essai in range(3):
+        r, motif = lire(envoyer(0xC3, CLIENT))
+        if r is not None or "statut a2" not in motif or not delai or essai == 2:
+            return r, motif
+        tracer("client C3 : NAK a2, nouvel essai dans %.0f s" % PAUSE_NAK)
+        time.sleep(PAUSE_NAK)
+
+
+def etat(envoyer, tracer):
+    """C1 de départ. Vrai si l'appareil répond un état lisible."""
+    r, motif = lire(envoyer(0xC1, ""))
+    if r is None or not re.fullmatch(FORMES[0xC1], r):
+        tracer("état C1 : ARRÊT, %s" % (motif or r))
+        return False
+    tracer("état C1 -> %s" % montrer(0xC1, r))
+    return True
 
 
 def ouvrir(nom, cmd, formes, envoyer, delai, tracer):
@@ -149,7 +178,7 @@ def ouvrir(nom, cmd, formes, envoyer, delai, tracer):
     for j, (variante, c0) in enumerate(formes):
         if j and delai:
             time.sleep(delai)
-        r, motif = lire(envoyer(0xC3, CLIENT))
+        r, motif = client(envoyer, delai, tracer)
         if r != "R":
             tracer("client C3 %r : ARRÊT, %s%s" % (CLIENT, motif or r, OUVERTE if "statut a2" in motif else ""))
             return False
@@ -187,22 +216,24 @@ def capturer(chemin):
 
 def jouer(scenario, fn, envoyer, delai=0.0, tracer=print, origine=("ESSAI-0009", "2", "4")):
     """Déroule le scénario. Rend 0 si tout a la forme attendue, 1 à l'arrêt."""
-    etat = {}
+    if not etat(envoyer, tracer):
+        return 1
+    etat_ = {}
     for i, (nom, cmd, donnees) in enumerate(etapes(scenario, fn, origine) if scenario == "avoir" else etapes(scenario, fn)):
-        if i and delai:
+        if delai:
             time.sleep(delai)
         if isinstance(donnees, list):
             if not ouvrir(nom, cmd, donnees, envoyer, delai, tracer):
                 return 1
             continue
-        d = donnees(etat) if callable(donnees) else donnees
+        d = donnees(etat_) if callable(donnees) else donnees
         if cmd == 0x35 and not (re.fullmatch(r"[A-Z]\d+\.\d{2}", d) and float(d[1:]) > 0):
             tracer("%s %02X %r : ARRÊT avant envoi, paiement nul ou négatif." % (nom, cmd, d))
             return 1
-        if cmd == 0x38 and d != "C" and etat.get("du") != 0:
-            tracer("%s %02X %r : ARRÊT avant envoi, la facture n'est pas soldée (reste %s)." % (nom, cmd, d, etat.get("du")))
+        if cmd == 0x38 and d != "C" and etat_.get("du") != 0:
+            tracer("%s %02X %r : ARRÊT avant envoi, la facture n'est pas soldée (reste %s)." % (nom, cmd, d, etat_.get("du")))
             return 1
-        r, motif = lire(envoyer(cmd, d))
+        r, motif = client(envoyer, delai, tracer) if cmd == 0xC3 else lire(envoyer(cmd, d))
         if r is None:
             tracer("%s %02X %r : ARRÊT, %s%s" % (nom, cmd, d, motif,
                                                  OUVERTE if cmd == 0xC3 and "statut a2" in motif else ""))
@@ -212,13 +243,13 @@ def jouer(scenario, fn, envoyer, delai=0.0, tracer=print, origine=("ESSAI-0009",
             tracer("ARRÊT : réponse inattendue ; la facture reste ouverte (C1 l'annule).")
             return 1
         if cmd == 0x33:
-            etat["total"] = float(r.split(",")[0])
+            etat_["total"] = float(r.split(",")[0])
         if cmd == 0x35:
             reste = float(r[1:])
             if reste > 0:
                 tracer("ARRÊT : reste positif %s, jamais vu (rendu de monnaie ?)." % r)
                 return 1
-            etat["du"] = round(-reste, 2) if reste else 0
+            etat_["du"] = round(-reste, 2) if reste else 0
     return 0
 
 

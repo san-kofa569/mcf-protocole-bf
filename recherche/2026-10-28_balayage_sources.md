@@ -219,3 +219,12 @@ Captures : `appareil/brut/2026-10-28_seance.txt` (hors dépôt).
 - 15:46:19 : grille `ht`, 1re forme : `ARTICLE TEST⇥LOCBIE,B18.0%118.00⇥100.00*1` → **`118.0,100.0,18.0,0.0`** (montant TTC,
   prix HT). ESSAI-0011 annulée ensuite par C1 : non comptée (le C0 suivant reprend `3,6`).
 - 15:46:43–59 : scénario `credit`, ESSAI-0012 : 31, 33 (102.0), **35 `A102.00` → `R0`**, 38 accepté, **`3/6 FV`**.
+
+## 14. Facture HT complète et blocage du C3 après un 38 (16:00–16:03)
+
+- 16:00:23 et 16:00:32 : C3 → NAK `a2` (13 min après le 38 d'ESSAI-0012, sans C1 depuis). 16:01:38 : C1, statut normal,
+  compteurs `6,3,1` ; son 10e champ (4) compte toutes les factures, pas le numéro dans le type.
+- 16:03:18–34 : scénario `ht`, ESSAI-0013 : C3 `R`, C0 HT `4,7,…`, 31 `B18.0%118.00⇥100.00*1` → `118.0,100.0,18.0,0.0`,
+  33 → `120.36,…,118.0,…,18.0,…,2.36,0.0` (montants TTC), 35 `E120.36` → `R0`, 38 → **`4/7 FV`**.
+- 16:03:41 : C3 du scénario `modes`, 7 s après ce 38 → NAK `a2`. Règle : après un 38 accepté, C3 refusé jusqu'à un C1.
+  `cycle.py` commence désormais chaque facture par un C1 et réessaie un NAK `a2` au C3.
