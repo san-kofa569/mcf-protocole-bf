@@ -179,3 +179,13 @@ Captures : `appareil/brut/2026-10-28_seance.txt` (hors dépôt).
 
 - ✅ Annulation d'une facture payée : `38 C`, non comptée. Le NAK de 14:45 venait bien du moment (5 s après un 38) :
   relancée 11 minutes plus tard, la même séquence passe.
+
+## 11. Avoir : la référence RN (15:06)
+
+- Signature d'ESSAI-0009 lue dans le C1 de 14:45 (`appareil/signature.py --numero 2`), exportée sans affichage.
+- 15:06:15 : C3 `R` ; C0 `1,Essai,{IFU},FA,COR,{SIG},TTC,ISF-ESSAI,AVOIR-0001,A` →
+  **`E:Erreur de format RN! <la signature envoyée>`** : la structure de l'avoir est lue, RN est jugé, et le message
+  renvoie la valeur. Rien d'ouvert.
+- ✅ Les signatures du mode Test commencent par `TESTFACT` (vérifié sur les trois de la capture).
+- Suite : RN en six groupes de 4 avec tirets, puis FN d'origine, puis numéro d'origine (`cycle.py --scenario avoir`,
+  écho masqué à l'écran).

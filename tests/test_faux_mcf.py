@@ -277,7 +277,9 @@ class CycleFisNano(unittest.TestCase):
 
     def test_avoir_a_sept_champs_format_autres_inconnues(self):
         self.assertEqual(self.mcf.donnees(0xC0, b"1,Essai,{IFU},FA,TTC,ISF-ESSAI,AV-1"), E_FORMAT_ATTENDU)
-        self.assertEqual(self.mcf.donnees(0xC0, b"1,Essai,{IFU},FA,COR,{SIG},TTC,ISF-ESSAI,AV-1,A"), INCONNU)
+        self.assertEqual(self.mcf.donnees(0xC0, b"1,Essai,{IFU},FA,COR,ABCDEFGHIJKLMNOPQRSTUV23,TTC,ISF-ESSAI,AV-1,A"),
+                         b"E:Erreur de format RN! ABCDEFGHIJKLMNOPQRSTUV23")
+        self.assertEqual(self.mcf.donnees(0xC0, b"1,Essai,{IFU},FA,COR,ESSAI-0009,TTC,ISF-ESSAI,AV-1,A"), INCONNU)
 
     def test_38_c_apres_le_35_annule_sans_compter(self):
         # 2026-10-28 14:56 : ESSAI-0010 payée puis annulée ; C1 suivant : compteurs inchangés, statut normal

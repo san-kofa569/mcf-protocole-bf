@@ -184,8 +184,13 @@ class FauxMCF:
             if len(champs) < 4 or champs[3] not in TYPES_FACTURE:
                 return E_FORMAT  # formats béninois du 09 (taux en 4e champ)
             if champs[3] in ("FA", "EA"):
-                # avoir : à 7 champs, message de format (15 octobre) ; aucune autre forme essayée
-                return E_FORMAT if len(champs) == 7 else INCONNU
+                # avoir : à 7 champs, message de format (15 octobre). `FA,COR,RN,TTC,ISF,FN,PSVB` est lu, et une
+                # signature brute de 24 caractères en RN répond « Erreur de format RN! » suivi du RN (28 octobre)
+                if len(champs) == 7:
+                    return E_FORMAT
+                if len(champs) == 10 and champs[4] == "COR" and re.fullmatch(r"[A-Z0-9]{24}|\{SIG\}", champs[5]):
+                    return ("E:Erreur de format RN! " + champs[5]).encode()
+                return INCONNU
             # PSVB : 8e champ à 8 champs, dernier à 10 ; `x` refusé, `A` accepté (15 octobre)
             psvb = champs[7] if len(champs) == 8 else champs[9] if len(champs) == 10 else None
             if psvb is not None and psvb not in TAUX_PSVB:

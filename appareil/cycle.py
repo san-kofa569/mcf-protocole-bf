@@ -15,16 +15,18 @@ Scénarios :
               plusieurs lignes, PSVB sur un service, mode M, paiement partiel ;
   annulation  un bien payé, puis 38 `C` : `E:ANNULEE`, facture non comptée (prouvé le 2026-10-28, 14:56).
               Sans 35, le 38 `C` répond « La commande 35 doit être soumise en premier. » : avant paiement, C1 annule.
-  avoir       avoir de correction (FA, nature COR) d'une facture « deux » : sa forme de C0 est inconnue ; chaque
-              forme est essayée (C3 puis C0), la suivante tant que l'appareil répond le message de format. La
-              signature d'origine vient de MCF_SIG (`export MCF_SIG=$(python3 -m appareil.signature …)`).
+  avoir       avoir de correction (FA, nature COR) d'une facture « deux ». Le C0 `op,nom,IFU,FA,COR,RN,TTC,ISF,FN,PSVB`
+              est lu (2026-10-28 15:06) ; la signature brute en RN répond `Erreur de format RN! <RN>`. Chaque forme
+              de RN est essayée (C3 puis C0), la suivante tant que la réponse est un message de format ; la valeur
+              renvoyée est masquée à l'écran. La signature d'origine vient de MCF_SIG
+              (`export MCF_SIG=$(python3 -m appareil.signature …)`), le FN et le numéro d'origine de --origine.
 
 Sur l'appareil, chaque réponse est écrite brute dans `--capture` (appareil/brut/, hors dépôt) : c'est là que se
 lisent NIM, IFU et signature, jamais à l'écran.
 
 Usage :
   python3 -m appareil.cycle --scenario simple --fn ESSAI-0009 --liste
-  python3 -m appareil.cycle --scenario avoir --fn AVOIR-0001 --port /dev/ttyACM0 --seq 60
+  python3 -m appareil.cycle --scenario avoir --fn AVOIR-0001 --origine ESSAI-0009,2 --port /dev/ttyACM0 --seq 60
   python3 -m appareil.cycle --scenario simple --fn ESSAI-0009 --jumeau
   python3 -m appareil.cycle --scenario deux --fn ESSAI-0009 --port /dev/ttyACM0 --seq 20
 
@@ -45,14 +47,15 @@ CLIENT = "PP,CLIENT TEST,,,70123456,client@example.com,"
 BIEN = "ARTICLE TEST\tLOCBIE,B18.0%100.00\t100.00*1"
 SERVICE = "POSE TEST\tLOCSER,C10.0%110.00\t110.00*1"
 FORMAT = "E:Erreur de format des données ou incompatibilité"
-# Forme du C0 d'avoir, inconnue : FA à 7 champs répond le message de format (15 octobre). La nature (📜 annexe SFE :
-# COR, RAN, RAM, RRR) et la signature d'origine (📖 RDC : `type,nature,référence` à la place du type), à plusieurs places.
+FORMAT_RN = "E:Erreur de format RN!"
+# C0 d'avoir (📖 RDC `type,nature,référence` à la place du type ; nature 📜 COR, RAN, RAM, RRR) : la structure passe,
+# la référence RN est jugée. Signature brute (24 caractères) : refusée le 2026-10-28. Formes de RN encore à essayer :
 AVOIRS = (
-    ("rdc+psvb", "1,Essai,{IFU},FA,COR,{SIG},TTC,ISF-ESSAI,%s,A"),
-    ("rdc", "1,Essai,{IFU},FA,COR,{SIG},TTC,ISF-ESSAI,%s"),
-    ("fin", "1,Essai,{IFU},FA,TTC,ISF-ESSAI,%s,A,COR,{SIG}"),
-    ("signature", "1,Essai,{IFU},FA,{SIG},TTC,ISF-ESSAI,%s,A"),
+    ("rn-tirets", "{SIG4}"),  # code SECeF imprimé en six groupes de 4 (Bénin, Niger)
+    ("rn-fn", "{fn_origine}"),
+    ("rn-numero", "{numero_origine}"),
 )
+C0_AVOIR = "1,Essai,{IFU},FA,COR,%s,TTC,ISF-ESSAI,%s,A"
 
 NOMBRE = r"-?\d+(?:\.\d+)?"
 FORMES = {
@@ -69,7 +72,7 @@ def montant(v):
     return "%.2f" % v
 
 
-def etapes(scenario, fn):
+def etapes(scenario, fn, origine=("ESSAI-0009", "2")):
     """(nom, commande, données) ; les données sont une fonction de l'état quand elles dépendent d'une réponse."""
     debut = [("client", 0xC3, CLIENT), ("ouverture", 0xC0, "1,Essai,{IFU},FV,TTC,ISF-ESSAI,%s,A" % fn)]
     if scenario == "simple":
@@ -82,7 +85,8 @@ def etapes(scenario, fn):
                         ("reste", 0x35, lambda e: "E" + montant(e["du"])),
                         ("normalisation", 0x38, lambda e: montant(e["total"]))]
     if scenario == "avoir":
-        return [("ouverture", 0xC0, [(v, f % fn) for v, f in AVOIRS]),
+        rn = {"{fn_origine}": origine[0], "{numero_origine}": origine[1]}
+        return [("ouverture", 0xC0, [(v, C0_AVOIR % (rn.get(f, f), fn)) for v, f in AVOIRS]),
                 ("bien", 0x31, BIEN), ("service", 0x31, SERVICE), ("sous-total", 0x33, ""),
                 ("paiement", 0x35, lambda e: "E" + montant(e["total"])),
                 ("normalisation", 0x38, lambda e: montant(e["total"]))]
@@ -132,8 +136,9 @@ def ouvrir(nom, cmd, formes, envoyer, delai, tracer):
         if r is None:
             tracer("%s %s %02X %r : ARRÊT, %s" % (nom, variante, cmd, c0, motif))
             return False
-        tracer("%s %s %02X %r -> %s" % (nom, variante, cmd, c0, r))
-        if r == FORMAT:
+        tracer("%s %s %02X %r -> %s" % (nom, variante, cmd, c0,
+                                         FORMAT_RN + " (valeur renvoyée masquée)" if r.startswith(FORMAT_RN) else r))
+        if r == FORMAT or r.startswith(FORMAT_RN):
             continue
         if re.fullmatch(FORMES[cmd], r):
             return True
@@ -157,10 +162,10 @@ def capturer(chemin):
     return noter
 
 
-def jouer(scenario, fn, envoyer, delai=0.0, tracer=print):
-    """Déroule le scénario. Rend 0 si tout a la forme attendue, 1 à l'arrêt (sonde comprise)."""
+def jouer(scenario, fn, envoyer, delai=0.0, tracer=print, origine=("ESSAI-0009", "2")):
+    """Déroule le scénario. Rend 0 si tout a la forme attendue, 1 à l'arrêt."""
     etat = {}
-    for i, (nom, cmd, donnees) in enumerate(etapes(scenario, fn)):
+    for i, (nom, cmd, donnees) in enumerate(etapes(scenario, fn, origine) if scenario == "avoir" else etapes(scenario, fn)):
         if i and delai:
             time.sleep(delai)
         if isinstance(donnees, list):
@@ -197,6 +202,7 @@ def main(argv=None, mcf=None):
     a = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     a.add_argument("--scenario", choices=("simple", "deux", "annulation", "avoir"), required=True)
     a.add_argument("--fn", required=True, help="référence de la facture, jamais réutilisée (ESSAI-0009…)")
+    a.add_argument("--origine", default="ESSAI-0009,2", help="avoir : FN et numéro de la facture d'origine")
     a.add_argument("--liste", action="store_true", help="afficher les trames, ne rien envoyer")
     a.add_argument("--jumeau", action="store_true", help="jouer contre le jumeau FIS")
     a.add_argument("--port", help="port série de l'appareil")
@@ -213,7 +219,7 @@ def main(argv=None, mcf=None):
         print("séquence hors 20–FF : rien envoyé.")
         return 2
     if o.liste or not (o.jumeau or o.port):
-        for nom, cmd, d in etapes(o.scenario, o.fn):
+        for nom, cmd, d in etapes(o.scenario, o.fn, tuple(o.origine.split(",", 1))):
             if isinstance(d, list):
                 for variante, c0 in d:
                     print("%-13s %02X %r  (forme %s, après un C3)" % (nom, cmd, c0, variante))
@@ -249,7 +255,8 @@ def main(argv=None, mcf=None):
         delai = DELAI
     print("%s cycle %s, FN %s, %s" % (time.strftime("%H:%M:%S"), o.scenario, o.fn,
                                       "jumeau" if o.jumeau else o.port), flush=True)
-    return jouer(o.scenario, o.fn, envoyer, delai, tracer=lambda t: print(time.strftime("%H:%M:%S ") + t, flush=True))
+    return jouer(o.scenario, o.fn, envoyer, delai, tracer=lambda t: print(time.strftime("%H:%M:%S ") + t, flush=True),
+                 origine=tuple(o.origine.split(",", 1)))
 
 
 if __name__ == "__main__":

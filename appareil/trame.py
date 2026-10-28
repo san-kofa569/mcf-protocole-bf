@@ -3,7 +3,8 @@
 Usage : python3 trame.py <port> <seq hex> <cmd hex> [données] [--simulation]
 Un {IFU} dans les données est remplacé par la variable d'environnement MCF_IFU ;
 sans elle, ou si elle ne fait pas 9 caractères alphanumériques, rien n'est envoyé (la simulation, elle, affiche la trame telle quelle).
-Un {SIG} (signature d'une facture d'origine, pour un avoir) est remplacé par MCF_SIG : 24 caractères A–Z, 0–9.
+Un {SIG} (signature d'une facture d'origine, pour un avoir) est remplacé par MCF_SIG : 24 caractères A–Z, 0–9 ;
+{SIG4} par la même en six groupes de 4 séparés par des tirets (forme imprimée du code SECeF au Bénin et au Niger).
 """
 import os
 import re
@@ -41,11 +42,11 @@ def remplir(texte, env=os.environ):
         if len(ifu) != 9 or not (ifu.isascii() and ifu.isalnum()):
             return None
         texte = texte.replace("{IFU}", env["MCF_IFU"])
-    if "{SIG}" in texte:
+    if "{SIG}" in texte or "{SIG4}" in texte:
         sig = env.get("MCF_SIG", "")
         if not re.fullmatch(r"[A-Z0-9]{24}", sig):
             return None
-        texte = texte.replace("{SIG}", sig)
+        texte = texte.replace("{SIG4}", "-".join(sig[i:i + 4] for i in range(0, 24, 4))).replace("{SIG}", sig)
     return texte
 
 

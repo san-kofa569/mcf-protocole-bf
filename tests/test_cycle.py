@@ -5,9 +5,9 @@ import unittest
 from contextlib import redirect_stdout
 from unittest import mock
 
-from appareil.cycle import BIEN, CLIENT, FORMAT, SERVICE, etapes, main
+from appareil.cycle import BIEN, CLIENT, SERVICE, etapes, main
 from appareil.signature import signature
-from simulateur.faux_mcf import E_FORMAT, FauxMCF
+from simulateur.faux_mcf import FauxMCF
 
 
 def lancer(*argv, mcf=None):
@@ -96,37 +96,46 @@ class AuJumeau(unittest.TestCase):
         self.assertIn("E:La taxe est incorrecte!", sortie)
 
 
-class AvoirEnRdc(FauxMCF):
-    """Jumeau d'essai où l'avoir s'ouvrirait à la 2e forme (9 champs) : hypothèse, pour éprouver le client."""
+class AvoirRnFn(FauxMCF):
+    """Jumeau d'essai : C0 d'avoir lu, RN accepté s'il vaut le FN d'origine (hypothèse, pour éprouver le client)."""
 
     def fis(self, cmd, data):
-        if cmd == 0xC0 and data.startswith(b"1,Essai,{IFU},FA,"):
+        if cmd == 0xC0 and data.startswith(b"1,Essai,{IFU},FA,COR,"):
             champs = data.split(b",")
-            if len(champs) != 9:
-                return E_FORMAT
+            if champs[5] != b"ESSAI-0009":
+                return b"E:Erreur de format RN! " + champs[5]
             return super().fis(cmd, b"1,Essai,{IFU},FV,TTC,ISF-ESSAI," + champs[8] + b",A")
         return super().fis(cmd, data)
 
 
 class Avoir(unittest.TestCase):
+    def test_formes_de_rn(self):
+        e = etapes("avoir", "AVOIR-0001", ("ESSAI-0009", "2"))
+        self.assertEqual([c0 for _, c0 in e[0][2]], [
+            "1,Essai,{IFU},FA,COR,{SIG4},TTC,ISF-ESSAI,AVOIR-0001,A",
+            "1,Essai,{IFU},FA,COR,ESSAI-0009,TTC,ISF-ESSAI,AVOIR-0001,A",
+            "1,Essai,{IFU},FA,COR,2,TTC,ISF-ESSAI,AVOIR-0001,A"])
+
     def test_au_jumeau_la_premiere_forme_est_inconnue(self):
         mcf = FauxMCF(variante="FIS")
         code, sortie = lancer("--scenario", "avoir", "--fn", "AVOIR-0001", "--jumeau", mcf=mcf)
         self.assertEqual(code, 1)
-        self.assertIn("ouverture rdc+psvb C0 '1,Essai,{IFU},FA,COR,{SIG},TTC,ISF-ESSAI,AVOIR-0001,A' -> E:??", sortie)
+        self.assertIn("ouverture rn-tirets C0 '1,Essai,{IFU},FA,COR,{SIG4},TTC,ISF-ESSAI,AVOIR-0001,A' -> E:??", sortie)
         self.assertFalse(mcf.ouverte)
 
-    def test_forme_suivante_tant_que_le_message_est_celui_de_format(self):
-        code, sortie = lancer("--scenario", "avoir", "--fn", "AVOIR-0001", "--jumeau", mcf=AvoirEnRdc(variante="FIS"))
+    def test_forme_suivante_tant_que_rn_est_refuse_et_valeur_masquee(self):
+        code, sortie = lancer("--scenario", "avoir", "--fn", "AVOIR-0001", "--jumeau", mcf=AvoirRnFn(variante="FIS"))
         self.assertEqual(code, 0)
-        self.assertIn("ouverture rdc+psvb C0 '1,Essai,{IFU},FA,COR,{SIG},TTC,ISF-ESSAI,AVOIR-0001,A' -> " + FORMAT, sortie)
-        self.assertIn("ouverture rdc C0 '1,Essai,{IFU},FA,COR,{SIG},TTC,ISF-ESSAI,AVOIR-0001' -> 1,3,CLIENT TEST", sortie)
+        self.assertIn("ouverture rn-tirets C0 '1,Essai,{IFU},FA,COR,{SIG4},TTC,ISF-ESSAI,AVOIR-0001,A' -> "
+                      "E:Erreur de format RN! (valeur renvoyée masquée)", sortie)
+        self.assertNotIn("{SIG4}' -> E:Erreur de format RN! {SIG4}", sortie)
+        self.assertIn("ouverture rn-fn C0 '1,Essai,{IFU},FA,COR,ESSAI-0009,TTC,ISF-ESSAI,AVOIR-0001,A' -> 1,3,", sortie)
         self.assertIn("paiement 35 'E214.20' -> R0", sortie)
         self.assertIn("normalisation 38 '214.20' -> accepté", sortie)
 
-    def test_liste_montre_les_quatre_formes(self):
+    def test_liste_montre_les_trois_formes(self):
         code, sortie = lancer("--scenario", "avoir", "--fn", "AVOIR-0001", "--liste")
-        self.assertEqual(sortie.count("(forme "), 4)
+        self.assertEqual(sortie.count("(forme "), 3)
 
 
 class Garde(unittest.TestCase):

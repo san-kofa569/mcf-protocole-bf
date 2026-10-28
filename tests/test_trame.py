@@ -52,6 +52,11 @@ class Remplir(unittest.TestCase):
         env = {"MCF_IFU": "IFU00000X", "MCF_SIG": "ABCDEFGHIJKLMNOPQRSTUV23"}
         self.assertEqual(remplir("{IFU},FA,COR,{SIG}", env), "IFU00000X,FA,COR,ABCDEFGHIJKLMNOPQRSTUV23")
 
+    def test_signature_en_groupes_de_quatre(self):
+        env = {"MCF_SIG": "ABCDEFGHIJKLMNOPQRSTUV23"}
+        self.assertEqual(remplir("COR,{SIG4}", env), "COR,ABCD-EFGH-IJKL-MNOP-QRST-UV23")
+        self.assertIsNone(remplir("COR,{SIG4}", {}))
+
     def test_signature_absente_ou_invalide_refusee(self):
         for sig in (None, "", "ABCDEFGHIJKLMNOPQRSTUV2", "abcdefghijklmnopqrstuv23", "ABCDEFGHIJKLMNOPQRSTUV2…"):
             env = {} if sig is None else {"MCF_SIG": sig}

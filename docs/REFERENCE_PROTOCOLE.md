@@ -85,8 +85,10 @@ L'exemple accepté ci-dessous met donc le nom à la place de l'IFU ; la forme r�
 | 8 (à 8 champs), dernier à 10 champs, PSVB | `x` : `PSVB n'existe pas!` ; `A` accepté. ✅ **Sans PSVB, aucun article n'est accepté** : toute 31 répond `La taxe est incorrecte!` |
 | 9 champs | `…,x,x` accepté (🔍 IFU et nom du client, comme au Bénin) |
 
-- ✅ Forme de la facture certifiée du 2026-10-28 : `1,Essai,{IFU},FV,TTC,ISF-ESSAI,ESSAI-0008,A`. 📖 Avoir (RDC) :
-  `type,nature,référence` à la place du type (nature 📜 `COR`, `RAN`, `RAM`, `RRR` ; référence = signature d'origine).
+- ✅ Forme de la facture certifiée du 2026-10-28 : `1,Essai,{IFU},FV,TTC,ISF-ESSAI,ESSAI-0008,A`.
+- ✅ **Avoir** : `op,nom,{IFU},FA,COR,RN,TTC,ISF,FN,PSVB` (10 champs) est lu ; la nature 📜 `COR`, `RAN`, `RAM`, `RRR`.
+  RN (référence de la facture d'origine) = signature brute de 24 caractères : `E:Erreur de format RN! <RN>` — le message
+  **renvoie la valeur reçue** (2026-10-28 15:06). ❓ Forme de RN attendue : à trouver (tirets, FN ou numéro d'origine).
 
 - ✅ `E:Erreur de format des données ou incompatibilité` = **nombre de champs faux** (5, 6, 12 champs).
 - ✅ Réponse : `n,tc,` suivi des **champs 2 à 7 du client** déclaré par C3 : `1,3,CLIENT TEST,,,70123456,client@example.com,`.
@@ -156,6 +158,8 @@ Mentions à imprimer (📜 note 0887 §2.10.3–2.10.4), tirées de cette répon
 **identificateur de machine** `(NIM)-(ACNT)` = le 5e champ tel quel (`{NIM}-1` : ACNT = compteur d'activation) ;
 **compteurs** `(CPIT)/(FDOC) (ITL)` = champs 1, 2 et 3 (`1/3 FV` : 1re facture de vente, 3 transactions) ;
 **date et heure du MCF** = le 4e champ ; **code QR** « au format défini par l'Administration » : ❓ non publié.
+✅ En mode Test, la signature commence par `TESTFACT` (3 signatures sur 3), suivie de 16 caractères propres à la facture.
+✅ C1 garde la dernière facture certifiée : date (7e champ), type (8e), signature (9e), numéro (10e), montant (11e).
 📖 RDC : réponse `P:` = renvoyer la même commande (jamais vue).
 ✅ Transmission : un C2 lancé 20 minutes après répond `3,3,{date}` (3 documents envoyés sur 3, dernier contact
 10 minutes après le 38) : la facture certifiée est partie au serveur de la DGI.
